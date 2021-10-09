@@ -11,3 +11,4 @@ Cargo.lock
 
 t.s
 t
+test_*
