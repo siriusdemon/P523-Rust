@@ -169,7 +169,17 @@ impl Parser {
 
     fn parse_integer(&mut self) -> Expr {
         let num = self.remove_top().unwrap();
-        Expr::Int32 (num.token.parse().unwrap())
+        let temp = &num.token.parse();
+        match temp {
+            Ok(t) => Expr::Int32(*t),
+            Err(e) => {
+                let temp = &num.token.parse();
+                match temp {
+                    Ok(t) => Expr::Int64(*t),
+                    Err(e) => panic!("{} not a valid integer", num.token),
+                }
+            }
+        }
     }
 
     fn top(&self) -> Option<&Token> {
