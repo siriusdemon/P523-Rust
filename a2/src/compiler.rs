@@ -76,6 +76,17 @@ impl ExposeFrameVar {
     }
 }
 
+// pub struct FlattenProgram {}
+// impl FlattenProgram {
+//     pub fn run(&self, expr: Expr) -> Expr {
+//         match expr {
+//             Letrec (lambdas, box tail) => {
+                
+//             }
+//         }  
+//     }
+// }
+
 pub struct CompileToAsmPass {}
 impl CompileToAsmPass {
     pub fn run(&self, expr: Expr) -> Asm {
@@ -141,6 +152,7 @@ impl CompileToAsmPass {
         }
     }
 }
+
 
 
 pub struct GenerateAsmPass {}
