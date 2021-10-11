@@ -36,6 +36,7 @@ pub enum Asm {
     Imm(i64),
     Op2(String, Box<Asm>, Box<Asm>),
     Retq,
+    Cfg(String, Vec<Asm>),
 }
 
 
@@ -49,8 +50,18 @@ impl fmt::Display for Asm {
             R8  => write!(f, "%r8"),  R9  => write!(f, "%r9"),  R10 => write!(f, "%r10"), R11 => write!(f, "%r11"), 
             R12 => write!(f, "%r12"), R13 => write!(f, "%r13"), R14 => write!(f, "%r14"), R15 => write!(f, "%r15"),
             Imm(n) => write!(f, "${}", n),
-            Op2(op, box e1, box e2) => write!(f, "{} {}, {}", op, e1, e2),
-            Retq => write!(f, "retq"),
+            Op2(op, box e1, box e2) => write!(f, "\t{} {}, {}\n", op, e1, e2),
+            Retq => write!(f, "\tretq\n"),
+            Cfg(label, codes) => {
+                let mut control_flow_graph = String::from(label);
+                control_flow_graph.push_str(":\n");
+                for code in codes {
+                    let code_str = format!("{}", code);
+                    control_flow_graph.push_str(&code_str);
+                }
+                return write!(f, "{}", control_flow_graph);
+            },
+            e => write!(f, "DEBUG INFO\n{:?}", e)
         }
     }
 }
