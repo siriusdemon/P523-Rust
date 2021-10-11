@@ -83,6 +83,11 @@ fn verify_symbol(sym: &str) -> bool {
     return true;
 }
 
+fn verify_label(sym: &str) -> bool {
+    let v: Vec<&str> = sym.split('$').collect();
+    v.len() == 2 && v[0].len() > 0 && v[1].len() > 0
+}
+
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         let mut tokens = tokens.into_iter();
@@ -107,9 +112,12 @@ impl Parser {
     }
 
     fn parse_atom(&mut self) -> Expr {
-        let chars: Vec<char> = self.top().unwrap().token.chars().collect();
+        let token = &self.top().unwrap().token;
+        let chars: Vec<char> = token.chars().collect();
         match chars[0] {
-            n if n.is_digit(10) => self.parse_integer(),
+            '0' ..= '9' => self.parse_integer(),
+            '-' => self.parse_integer(),
+            e if verify_label(token) => self.parse_label(),
             e => self.parse_symbol(),
         }
     }
@@ -118,13 +126,30 @@ impl Parser {
         let _left = self.remove_top();
         let top = self.top();
         match top.unwrap().token.as_str() {
+            "letrec" => self.parse_letrec(),
             "begin" => self.parse_begin(),
             "set!" => self.parse_set(),
             "+" | "-" | "*" => self.parse_prim2(),
-            e => panic!("Unexpected op: {}", e),
+            label => self.parse_funcall(),
         }
     }
 
+    fn parse_letrec(&mut self) -> Expr {
+        let _letrec = self.remove_top();
+        let _lambda_left = self.remove_top();
+        let mut lambdas = vec![];
+        while let Some(ref t) = self.top() {
+            if t.token.as_str() != ")" {
+                let lambda = self.parse_lambda();
+                lambdas.push(lambda);
+            } else {
+                let _lambda_right = self.remove_top();
+                let tail = self.parse_expr();
+                return Expr::Letrec(lambdas, Box::new(tail));
+            }
+        }
+        panic!("Parse letrec, unexpected eof");
+    }
 
     fn parse_begin(&mut self) -> Expr {
         let _begin = self.remove_top();
@@ -139,6 +164,27 @@ impl Parser {
             }
         } 
         panic!("Parse Begin, unexpected eof");
+    }
+
+    fn parse_lambda(&mut self) -> Expr {
+        let _left = self.remove_top();
+        let label = self.remove_top().unwrap().token;
+        assert!(verify_label(&label), "invalid label {} in lambda expr", label);
+        let _lambda_left = self.remove_top();
+        let lambda = self.remove_top().unwrap().token;
+        assert!(lambda.as_str() == "lambda");
+        let _args_left = self.remove_top();
+        let _args_right = self.remove_top();
+        let tail = self.parse_expr();
+        let _lambda_right = self.remove_top();
+        let _right = self.remove_top();
+        return Expr::Lambda(label, Box::new(tail));
+    }
+
+    fn parse_funcall(&mut self) -> Expr {
+        let labl = self.remove_top().unwrap();
+        let _right = self.remove_top();
+        return Expr::Funcall(labl.token);
     }
 
     fn parse_set(&mut self) -> Expr {
@@ -162,10 +208,13 @@ impl Parser {
         if verify_symbol(&sym.token.as_str()) {
             return Expr::Symbol(sym.token);
         }
-        panic!("Invalid Symbol {}", sym.token);
+        panic!("Invalid Symbol {} at {}", sym.token, sym.i);
     }
 
-
+    fn parse_label(&mut self) -> Expr {
+        let labl = self.remove_top().unwrap();
+        return Expr::Label(labl.token);
+    }
 
     fn parse_integer(&mut self) -> Expr {
         let num = self.remove_top().unwrap();

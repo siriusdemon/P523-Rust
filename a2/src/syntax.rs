@@ -2,11 +2,16 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum Expr {
-    Int64(i64),
+    Letrec(Vec<Expr>, Box<Expr>),
+    Lambda(String, Box<Expr>),
+    Tail(Box<Expr>),
     Begin(Vec<Expr>),
     Prim2(String, Box<Expr>, Box<Expr>),
     Set(Box<Expr>, Box<Expr>),
     Symbol(String),
+    Label(String),
+    Funcall(String),
+    Int64(i64),
 }
 
 
@@ -14,7 +19,19 @@ impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Expr::*;
         match self {
-            Int64 (i) => write!(f, "{}", i),
+            Letrec (lambdas, box tail) => {
+                let seqs: Vec<String> = lambdas.into_iter().map(|e| format!("  {}", e)).collect();
+                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+                let seqs_s = seqs_ref.join("\n");
+                let s = format!("(letrec ({}) {})", seqs_s, tail);
+                write!(f, "{}", s)
+            },
+            Lambda (label, box tail) => {
+                let s = format!("({} (lambda () {}))", label, tail);
+                write!(f, "{}", s)
+            },
+            Tail (box Funcall(label)) => write!(f, "{}", format!("({})", label)),
+            Tail (box begin ) => write!(f, "{}", format!("{}", begin)),
             Begin ( exprs ) => {
                 let seqs: Vec<String> = exprs.into_iter().map(|e| format!("  {}", e)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
@@ -24,6 +41,9 @@ impl fmt::Display for Expr {
             Set (box e1, box e2) => write!(f, "(set! {} {})", e1, e2),
             Prim2 (op, box e1, box e2) => write!(f, "({} {} {})", op, e1, e2),
             Symbol (s) => write!(f, "{}", s),
+            Label (label) => write!(f, "{}", label),
+            Funcall (label) => write!(f, "({})", label),
+            Int64 (i) => write!(f, "{}", i),
         }
     }
 }

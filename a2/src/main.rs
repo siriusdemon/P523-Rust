@@ -10,6 +10,14 @@ use compiler::compile;
 
 
 fn main() -> std::io::Result<()> {
-    let s = "(begin (set! rax 8) (set! rcx 3) (set! rax (- rax rcx)))"; 
+    let s = "(letrec ((f$1 (lambda () (begin 
+                                        (set! fv0 rax)
+                                        (set! rax (+ rax rax))
+                                        (set! rax (+ rax fv0))
+                                        (r15)))))
+                (begin 
+                    (set! rax 17)
+                    (f$1)))";
+    // let s = "(letrec () (begin (r15)))";
     compile(s, "t.s")
 }
