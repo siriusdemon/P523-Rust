@@ -2,7 +2,6 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum Expr {
-    Int32(i32),
     Int64(i64),
     Begin(Vec<Expr>),
     Prim2(String, Box<Expr>, Box<Expr>),
@@ -15,7 +14,6 @@ impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Expr::*;
         match self {
-            Int32 (i) => write!(f, "{}", i),
             Int64 (i) => write!(f, "{}", i),
             Begin ( exprs ) => {
                 let seqs: Vec<String> = exprs.into_iter().map(|e| format!("  {}", e)).collect();
@@ -26,6 +24,33 @@ impl fmt::Display for Expr {
             Set (box e1, box e2) => write!(f, "(set! {} {})", e1, e2),
             Prim2 (op, box e1, box e2) => write!(f, "({} {} {})", op, e1, e2),
             Symbol (s) => write!(f, "{}", s),
+        }
+    }
+}
+
+
+#[derive(Debug)]
+pub enum Asm {
+    RSP, RBP, RAX, RBX, RCX, RDX, RSI, RDI, 
+    R8, R9, R10, R11, R12, R13, R14, R15,
+    Imm(i64),
+    Op2(String, Box<Asm>, Box<Asm>),
+    Retq,
+}
+
+
+
+impl fmt::Display for Asm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Asm::*;
+        match self {
+            RAX => write!(f, "%rax"), RBX => write!(f, "%rbx"), RCX => write!(f, "%rcx"), RDX => write!(f, "%rdx"), 
+            RSI => write!(f, "%rsi"), RDI => write!(f, "%rdi"), RBP => write!(f, "%rbp"), RSP => write!(f, "%rsp"), 
+            R8  => write!(f, "%r8"),  R9  => write!(f, "%r9"),  R10 => write!(f, "%r10"), R11 => write!(f, "%r11"), 
+            R12 => write!(f, "%r12"), R13 => write!(f, "%r13"), R14 => write!(f, "%r14"), R15 => write!(f, "%r15"),
+            Imm(n) => write!(f, "${}", n),
+            Op2(op, box e1, box e2) => write!(f, "{} {}, {}", op, e1, e2),
+            Retq => write!(f, "retq"),
         }
     }
 }

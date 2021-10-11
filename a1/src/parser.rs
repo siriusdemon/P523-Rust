@@ -171,14 +171,8 @@ impl Parser {
         let num = self.remove_top().unwrap();
         let temp = &num.token.parse();
         match temp {
-            Ok(t) => Expr::Int32(*t),
-            Err(e) => {
-                let temp = &num.token.parse();
-                match temp {
-                    Ok(t) => Expr::Int64(*t),
-                    Err(e) => panic!("{} not a valid integer", num.token),
-                }
-            }
+            Ok(t) => Expr::Int64(*t),
+            Err(e) => panic!("{} not a valid integer", num.token),
         }
     }
 

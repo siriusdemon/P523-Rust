@@ -1,6 +1,6 @@
 use std::io::Write;
 use std::fs::File;
-use crate::syntax::Expr;
+use crate::syntax::{Expr, Asm};
 use crate::parser::{Scanner, Parser};
 
 pub struct ParsePass {}
@@ -45,11 +45,7 @@ impl GenerateX64 {
                 let c = format!("\tmovq \t${}, \t%{}\n", i, var);
                 file.write(c.as_bytes())
             },
-            Set (box var, box Int32(i)) => {
-                let c = format!("\tmovq \t${}, \t%{}\n", i, var);
-                file.write(c.as_bytes())
-            },
-            Set (box v1, box Prim2(op, box v2, box Int32(i))) => {
+            Set (box v1, box Prim2(op, box v2, box Int64(i))) => {
                 let sym = self.x64_binop(&op);
                 let c = format!("\t{} \t${}, \t%{}\n", sym, i, v1);
                 file.write(c.as_bytes())
