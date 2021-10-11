@@ -11,10 +11,68 @@ impl ParsePass {
     pub fn run(&self, expr: &str) -> Expr {
         let scanner = Scanner::new(expr);
         let tokens = scanner.scan();
-        println!("{:?}", tokens);
         let parser = Parser::new(tokens);
         let expr = parser.parse();
         return expr;
+    }
+}
+
+pub struct ExposeFrameVar {}
+impl ExposeFrameVar {
+    pub fn run(&self, expr: Expr) -> Expr {
+        match expr {
+            Letrec(lambdas, box tail) => {
+                let new_lambda: Vec<Expr> = lambdas.into_iter()
+                                                .map(|e| self.replace_fv(e))
+                                                .collect();
+                let new_tail = self.replace_fv(tail);
+                return Letrec(new_lambda, Box::new(new_tail));
+            },
+            _ => panic!("Invalid Program {}", expr),
+        }  
+    }
+
+    fn is_fv(&self, s: &str) -> bool {
+        s.starts_with("fv")
+    }
+
+    fn fv_to_disp(&self, fv :&str) -> Expr {
+        let v :Vec<&str> = fv.split("fv").collect();
+        let index :i64 = v[1].parse().unwrap();
+        return Disp ("rbp".to_string(), index * 8);
+    }
+
+    fn replace_fv(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (label, box tail) => Lambda (label, Box::new(self.replace_fv(tail))),
+            Funcall (box Symbol(v)) if self.is_fv(&v) => {
+                let disp = self.fv_to_disp(&v);
+                return Funcall ( Box::new(disp) );
+            }
+            Begin (exprs) => {
+                let new_exprs: Vec<Expr> = exprs.into_iter()
+                                                .map(|e| self.replace_fv(e))
+                                                .collect();
+                return Begin (new_exprs); 
+            },
+            Set (box Symbol(s), any) if self.is_fv(&s) => {
+                let disp = self.fv_to_disp(&s);
+                return Set (Box::new(disp), any);
+            },
+            Set (any, box Symbol(s)) if self.is_fv(&s) => {
+                let disp = self.fv_to_disp(&s);
+                return Set (any, Box::new(disp));
+            },
+            Set (any, box Prim2(op, box Symbol(s), any2)) if self.is_fv(&s) => {
+                let disp = self.fv_to_disp(&s);
+                return Set (any, Box::new( Prim2 (op, Box::new(disp), any2)));
+            },
+            Set (any, box Prim2(op, any2, box Symbol(s))) if self.is_fv(&s) => {
+                let disp = self.fv_to_disp(&s);
+                return Set (any, Box::new( Prim2 (op, any2, Box::new(disp))));
+            },
+            e => e,
+        } 
     }
 }
 
@@ -113,8 +171,17 @@ impl GenerateAsmPass {
 
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParsePass{}.run(s);
+    println!(">>> ParsePass");
+    println!("----------------------------");
     println!("{}", expr);
-    let asms = CompileToAsmPass{}.run(expr);
-    println!("{}", asms);
-    GenerateAsmPass{}.run(asms, filename)
+    println!("----------------------------\n");
+    let expr = ExposeFrameVar{}.run(expr);
+    println!(">>> ExposeFrameVar");
+    println!("----------------------------");
+    println!("{}", expr);
+    println!("----------------------------\n");
+    // let asms = CompileToAsmPass{}.run(expr);
+    // println!("{}", asms);
+    // GenerateAsmPass{}.run(asms, filename)
+    Ok(())
 }

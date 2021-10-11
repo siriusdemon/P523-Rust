@@ -197,7 +197,7 @@ impl Parser {
     fn parse_funcall(&mut self) -> Expr {
         let labl = self.remove_top().unwrap();
         let _right = self.remove_top();
-        return Expr::Funcall(labl.token);
+        return Expr::Funcall(Box::new(Symbol(labl.token)));
     }
 
     fn parse_set(&mut self) -> Expr {

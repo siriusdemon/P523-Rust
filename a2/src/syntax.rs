@@ -4,14 +4,14 @@ use std::fmt;
 pub enum Expr {
     Letrec(Vec<Expr>, Box<Expr>),
     Lambda(String, Box<Expr>),
-    Tail(Box<Expr>),
     Begin(Vec<Expr>),
     Prim2(String, Box<Expr>, Box<Expr>),
     Set(Box<Expr>, Box<Expr>),
     Symbol(String),
     Label(String),
-    Funcall(String),
+    Funcall(Box<Expr>),
     Int64(i64),
+    Disp(String, i64),
 }
 
 
@@ -23,15 +23,13 @@ impl fmt::Display for Expr {
                 let seqs: Vec<String> = lambdas.into_iter().map(|e| format!("  {}", e)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
                 let seqs_s = seqs_ref.join("\n");
-                let s = format!("(letrec ({}) {})", seqs_s, tail);
+                let s = format!("(letrec ({}) \n  {})", seqs_s, tail);
                 write!(f, "{}", s)
             },
             Lambda (label, box tail) => {
                 let s = format!("({} (lambda () {}))", label, tail);
                 write!(f, "{}", s)
             },
-            Tail (box Funcall(label)) => write!(f, "{}", format!("({})", label)),
-            Tail (box begin ) => write!(f, "{}", format!("{}", begin)),
             Begin ( exprs ) => {
                 let seqs: Vec<String> = exprs.into_iter().map(|e| format!("  {}", e)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
@@ -42,8 +40,9 @@ impl fmt::Display for Expr {
             Prim2 (op, box e1, box e2) => write!(f, "({} {} {})", op, e1, e2),
             Symbol (s) => write!(f, "{}", s),
             Label (label) => write!(f, "{}", label),
-            Funcall (label) => write!(f, "({})", label),
+            Funcall (box name) => write!(f, "({})", name),
             Int64 (i) => write!(f, "{}", i),
+            Disp (reg, offset) => write!(f, "#<disp {} {}>", reg, offset),
         }
     }
 }
@@ -54,6 +53,7 @@ pub enum Asm {
     RSP, RBP, RAX, RBX, RCX, RDX, RSI, RDI, 
     R8, R9, R10, R11, R12, R13, R14, R15,
     Imm(i64),
+    Deref(),
     Op2(String, Box<Asm>, Box<Asm>),
     Retq,
     Cfg(String, Vec<Asm>),

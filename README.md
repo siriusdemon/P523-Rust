@@ -10,7 +10,7 @@ P523 Course in Rust
 4. 修改 compiler
 5. 增减 test
 
-### 作业一
+### week1
 
 + ParsePass
 将字符串转换成语法树
@@ -21,5 +21,10 @@ P523 Course in Rust
 + GenerateAsmPass
 将汇编代码写到文件中
 
-### 作业二
+### week2
 
+Scanner 对每个 Token 增加了行与列的属性
+
+Expr 新增 letrec, label, lambda, tail, disp
+
+Asm 新增 Deref
