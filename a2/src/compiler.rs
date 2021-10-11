@@ -11,6 +11,7 @@ impl ParsePass {
     pub fn run(&self, expr: &str) -> Expr {
         let scanner = Scanner::new(expr);
         let tokens = scanner.scan();
+        println!("{:?}", tokens);
         let parser = Parser::new(tokens);
         let expr = parser.parse();
         return expr;

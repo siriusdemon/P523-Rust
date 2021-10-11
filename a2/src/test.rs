@@ -6,6 +6,7 @@ use crate::syntax::Expr;
 fn test_token_helper(s: &str, r: Vec<&str>) -> bool {
     let scanner = Scanner::new(s);
     let tokens = scanner.scan();
+    println!("{:?}", tokens);
     for (token, res) in tokens.into_iter().zip(r) {
         if token.token != res {
             return false;
@@ -32,6 +33,14 @@ fn token2() {
     let r = vec!["(", "begin", "(", "set!", "rax", "-8", ")", ")"];
     assert!(test_token_helper(s, r));
 }
+
+#[test]
+fn token3() {
+    let s = "(begin (set! rax -8))";
+    let r = vec!["(", "begin", "(", "set!", "rax", "-8", ")", ")"];
+    assert!(test_token_helper(s, r));
+}
+
 
 fn test_parser_helper(s: &str) {
     let scanner = Scanner::new(s);

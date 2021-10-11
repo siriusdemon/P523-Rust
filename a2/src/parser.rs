@@ -5,6 +5,8 @@ use crate::syntax::*;
 pub struct Token {
     pub token: String,
     pub i: usize,
+    pub line: usize,
+    pub col: usize,
 }
 
 
@@ -30,35 +32,47 @@ impl Scanner {
     pub fn scan(self) -> Vec<Token> {
         let mut res = vec![];
         let mut i = 0;
+        let mut line = 1;
+        let mut col = 1;
         while i < self.expr.len() {
-            i = self.scan_expr(i, &mut res);
+            i = self.scan_expr(i, &mut line, &mut col, &mut res);
         }
         return res
     }
 
-    pub fn scan_expr(&self, i: usize, tokens: &mut Vec<Token>) -> usize {
+    pub fn scan_expr(&self, i: usize, line: &mut usize, col: &mut usize, tokens: &mut Vec<Token>) -> usize {
         // if i >= self.expr.len() { return i; }
 
         let c = self.expr[i];
         match c {
             cc if is_delimiter(cc) => {
-                let tok = Token { token: format!("{}", cc), i };
+                let tok = Token { token: format!("{}", cc), i, line: *line, col: *col };
                 tokens.push(tok);
+                *col = *col + 1;
                 i + 1
             }
-            ' ' => i + 1,
-            e => self.scan_sym(i, tokens),
+            ' ' => {
+                *col += 1;
+                i + 1
+            }
+            '\n' => {
+                *col = 0;
+                *line += 1;
+                i + 1
+            }
+            e => self.scan_sym(i, line, col, tokens),
         }
     }
 
-    fn scan_sym(&self, i: usize, tokens: &mut Vec<Token>) -> usize {
+    fn scan_sym(&self, i: usize, line: &mut usize, col: &mut usize, tokens: &mut Vec<Token>) -> usize {
         let mut sym = String::new();
         let mut j = i;
-        while j < self.expr.len() && ! is_delimiter(self.expr[j]) && self.expr[j] != ' ' {
+        while j < self.expr.len() && ! is_delimiter(self.expr[j]) && self.expr[j] != ' ' && self.expr[j] != '\n' {
             sym.push(self.expr[j]);
-            j = j + 1 
+            j = j + 1;
         }
-        let tok = Token {token: sym, i};
+        let tok = Token {token: sym, i, line: *line, col: *col};
+        *col += tok.token.len();
         tokens.push(tok);
         return j;
     }
@@ -101,7 +115,6 @@ impl Parser {
 
     // at the very top level, only list and atom allowed
     pub fn parse_expr(&mut self) -> Expr {
-        self.handle_newline();
         if let Some(ref t) = self.top() {
             if t.token.as_str() == "(" {
                 return self.parse_list();
@@ -234,12 +247,6 @@ impl Parser {
         match new {
             Some(t) => self.top.replace(t),
             None => self.top.take(),
-        }
-    }
-    
-    fn handle_newline(&mut self) {
-        while self.top().unwrap().token.as_str() == "\n" {
-            self.remove_top();
         }
     }
 }
