@@ -109,7 +109,8 @@ impl Parser {
     fn parse_atom(&mut self) -> Expr {
         let chars: Vec<char> = self.top().unwrap().token.chars().collect();
         match chars[0] {
-            n if n.is_digit(10) => self.parse_integer(),
+            '0' ..= '9' => self.parse_integer(),
+            '-' => self.parse_integer(),
             e => self.parse_symbol(),
         }
     }

@@ -11,5 +11,6 @@ use compiler::compile;
 
 fn main() -> std::io::Result<()> {
     let s = "(begin (set! rax 8) (set! rcx 3) (set! rax (- rax rcx)))"; 
+    let s = "(begin (set! rax -10))";
     compile(s, "t.s")
 }

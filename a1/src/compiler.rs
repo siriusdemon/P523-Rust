@@ -112,7 +112,8 @@ impl GenerateAsmPass {
 
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParsePass{}.run(s);
-    println!("{}", expr);
+    println!("{:?}", expr);
     let asms = CompileToAsmPass{}.run(expr);
+    println!("{}", asms);
     GenerateAsmPass{}.run(asms, filename)
 }
