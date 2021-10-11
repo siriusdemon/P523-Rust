@@ -52,15 +52,6 @@ impl fmt::Display for Asm {
             Imm(n) => write!(f, "${}", n),
             Op2(op, box e1, box e2) => write!(f, "\t{} {}, {}\n", op, e1, e2),
             Retq => write!(f, "\tretq\n"),
-            Cfg(label, codes) => {
-                let mut control_flow_graph = String::from(label);
-                control_flow_graph.push_str(":\n");
-                for code in codes {
-                    let code_str = format!("{}", code);
-                    control_flow_graph.push_str(&code_str);
-                }
-                return write!(f, "{}", control_flow_graph);
-            },
             e => write!(f, "DEBUG INFO\n{:?}", e)
         }
     }
