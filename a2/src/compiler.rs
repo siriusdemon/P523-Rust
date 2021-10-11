@@ -76,16 +76,45 @@ impl ExposeFrameVar {
     }
 }
 
-// pub struct FlattenProgram {}
-// impl FlattenProgram {
-//     pub fn run(&self, expr: Expr) -> Expr {
-//         match expr {
-//             Letrec (lambdas, box tail) => {
-                
-//             }
-//         }  
-//     }
-// }
+// diff from P523, we only handed the nested begin
+pub struct FlattenProgram {}
+impl FlattenProgram {
+    pub fn run(&self, expr: Expr) -> Expr {
+        match expr {
+            Letrec (lambdas, box tail) => {
+                let new_lambda: Vec<Expr> = lambdas.into_iter()
+                                                .map(|e| self.flatten(e))
+                                                .collect();
+                let new_tail = self.flatten(tail);
+                return Letrec(new_lambda, Box::new(new_tail));
+            },
+            _ => panic!("Invalid Program {}", expr),
+            
+        }  
+    }
+
+    fn flatten(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (label, box tail) => Lambda (label, Box::new(self.flatten(tail))),
+            Begin (exprs) => {
+                let mut new_exprs = vec![];
+                self.flatten_begin(exprs, &mut new_exprs);
+                return Begin (new_exprs); 
+            },
+            e => e,
+        }
+    }
+    
+    fn flatten_begin(&self, ve: Vec<Expr>, res: &mut Vec<Expr>) {
+        for e in ve {
+            if let Begin (vee) = e {
+                self.flatten_begin(vee, res);
+            } else {
+                res.push(e);
+            }
+        }
+    }
+}
 
 pub struct CompileToAsmPass {}
 impl CompileToAsmPass {
@@ -181,19 +210,19 @@ impl GenerateAsmPass {
 }
 
 
+pub fn compile_formater<T: std::fmt::Display>(s: &str, expr: &T) {
+    println!(">>> {}", s);
+    println!("----------------------------");
+    println!("{}", expr);
+    println!("----------------------------\n");
+}
+
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParsePass{}.run(s);
-    println!(">>> ParsePass");
-    println!("----------------------------");
-    println!("{}", expr);
-    println!("----------------------------\n");
+    compile_formater("ParsePass", &expr);
     let expr = ExposeFrameVar{}.run(expr);
-    println!(">>> ExposeFrameVar");
-    println!("----------------------------");
-    println!("{}", expr);
-    println!("----------------------------\n");
-    // let asms = CompileToAsmPass{}.run(expr);
-    // println!("{}", asms);
-    // GenerateAsmPass{}.run(asms, filename)
+    compile_formater("ExposeFrameVar", &expr);
+    let expr = FlattenProgram{}.run(expr);
+    compile_formater("FlattenProgram", &expr);
     Ok(())
 }

@@ -16,7 +16,8 @@ fn main() -> std::io::Result<()> {
                                         (set! rax (+ rax fv0))
                                         (r15)))))
                 (begin 
+                  (begin
                     (set! rax 17)
-                    (f$1)))";
+                    (f$1))))";
     compile(s, "t.s")
 }
