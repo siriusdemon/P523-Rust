@@ -19,5 +19,7 @@ fn main() -> std::io::Result<()> {
                   (begin
                     (set! rax 17)
                     (f$1))))";
+
+    let s = "(letrec () (begin (set! rax 8) (set! rcx 3) (set! rax (- rax rcx)) (r15)))"; 
     compile(s, "t.s")
 }

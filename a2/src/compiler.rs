@@ -118,10 +118,35 @@ impl CompileToAsm {
         let mut blocks = vec![];
         match expr {
             Letrec(lambdas, box tail) => {
+                // the entry code
                 let label = String::from("_scheme_entry");
-                let codes = self.tail_to_asm(tail);
+                let mut codes = [
+                    Push (Box::new(RBX)),
+                    Push (Box::new(RBP)),
+                    Push (Box::new(R12)),
+                    Push (Box::new(R13)),
+                    Push (Box::new(R14)),
+                    Push (Box::new(R15)),
+                    self.op2("movq", RDI, RBP);
+                    self.op2("leaq", DerefLabel(RIP, "_scheme_exit".to_string()), R15),
+                ];
+                codes.append(self.tail_to_asm(tail));
                 let cfg = Cfg(label, codes);
                 blocks.push(cfg);
+                // the exit code
+                let label = String::from("_scheme_exit");
+                let codes = [
+                    Pop (Box::new(R15)),
+                    Pop (Box::new(R14)),
+                    Pop (Box::new(R13)),
+                    Pop (Box::new(R12)),
+                    Pop (Box::new(RBP)),
+                    Pop (Box::new(RBX)),
+                    Retq,
+                ]
+                let cfg = Cfg(label, codes);
+                blocks.push(cfg);
+                // other code blocks
                 for lambda in lambdas {
                     match lambda {
                         Lambda (labl, box lambda_tail) => {
@@ -214,24 +239,10 @@ pub struct GenerateAsm {}
 impl GenerateAsm {
     pub fn run(&self, code: Asm, filename: &str) -> std::io::Result<()> {
         let mut file = File::create(filename)?;
+        let codes = format!("{}", code);
         file.write(b".globl _scheme_entry\n")?;
-        self.emit_asm(code, &mut file)?;
+        file.write(codes.as_bytes())?;
         return Ok(());
-    }
-
-    pub fn emit_asm(&self, code: Asm, file: &mut File) -> std::io::Result<()> {
-        match code {
-            Cfg(label, insts) => {
-                file.write(label.as_bytes())?;
-                file.write(b":\n")?;
-                for inst in insts {
-                    let text = format!("{}", inst);
-                    file.write(text.as_bytes())?;
-                }
-            },
-            _ => panic!("something wrong"),
-        };
-        Ok(())        
     }
 }
 
@@ -252,5 +263,5 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formater("FlattenProgram", &expr);
     let expr = CompileToAsm{}.run(expr);
     compile_formater("CompileToAsm", &expr);
-    Ok(())
+    return GenerateAsm{}.run(expr, filename)
 }

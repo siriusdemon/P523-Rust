@@ -52,14 +52,30 @@ pub enum Asm {
     R8, R9, R10, R11, R12, R13, R14, R15,
     Imm(i64),
     Deref(Box<Asm>, i64),
+    DerefLabel(Box<Asm>, String),
     Op2(String, Box<Asm>, Box<Asm>),
     Retq,
     Cfg(String, Vec<Asm>),
     Jmp(String),
     Prog(Vec<Asm>),
+    Push(Box<Asm>),
+    Pop(Box<Asm>),
 }
 
+// duplicate in compiler.rs
+fn is_register(reg: &str) -> bool {
+    let registers = [
+        "rax", "rbx", "rcx", "rbx", "rsi", "rdi", "rbp", "rsp", 
+        "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+    ];
+    return registers.contains(&reg);
+}
 
+// duplicate in parser.rs
+fn is_label(sym: &str) -> bool {
+    let v: Vec<&str> = sym.split('$').collect();
+    v.len() == 2 && v[0].len() > 0 && v[1].len() > 0
+}
 
 impl fmt::Display for Asm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -72,8 +88,12 @@ impl fmt::Display for Asm {
             Imm(n) => write!(f, "${}", n),
             Op2(op, box e1, box e2) => write!(f, "\t{} {}, {}\n", op, e1, e2),
             Deref(box reg, n) => write!(f, "{}({})", n, reg),
+            DerefLabel(box reg, s) => write!(f, "{}({})", s, reg),
             Retq => write!(f, "\tretq\n"),
-            Jmp(s) => write!(f, "\tjmp {}\n", s),
+            Push (box a) => write!(f, "\tpushq {}", a),
+            Pop (box a) => write!(f, "\tpopq {}", a),
+            Jmp (s) if is_register(s) => write!(f, "\tjmp *%{}\n", s),
+            Jmp (s) => write!(f, "\tjmp {}\n", s),
             Cfg( labl, codes ) => {
                 let mut codes_str = String::new();
                 for code in codes {
