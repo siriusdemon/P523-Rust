@@ -28,6 +28,8 @@ P523 Course in Rust
 
 ### week2
 
+ExposeFrameVar 被融合进 CompileToAsm
+
 Scanner 对每个 Token 增加了行与列的属性
 
 Expr 新增 letrec, label, lambda, disp

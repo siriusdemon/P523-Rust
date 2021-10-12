@@ -10,7 +10,6 @@ pub enum Expr {
     Symbol(String),
     Funcall(String),
     Int64(i64),
-    Disp(String, i64),
 }
 
 
@@ -40,7 +39,6 @@ impl fmt::Display for Expr {
             Symbol (s) => write!(f, "{}", s),
             Funcall (name) => write!(f, "({})", name),
             Int64 (i) => write!(f, "{}", i),
-            Disp (reg, offset) => write!(f, "#<disp {} {}>", reg, offset),
         }
     }
 }
@@ -50,32 +48,20 @@ impl fmt::Display for Expr {
 pub enum Asm {
     RSP, RBP, RAX, RBX, RCX, RDX, RSI, RDI, 
     R8, R9, R10, R11, R12, R13, R14, R15,
+    RIP,
     Imm(i64),
+    Label(String),
     Deref(Box<Asm>, i64),
     DerefLabel(Box<Asm>, String),
     Op2(String, Box<Asm>, Box<Asm>),
     Retq,
     Cfg(String, Vec<Asm>),
-    Jmp(String),
+    Jmp(Box<Asm>),
     Prog(Vec<Asm>),
     Push(Box<Asm>),
     Pop(Box<Asm>),
 }
 
-// duplicate in compiler.rs
-fn is_register(reg: &str) -> bool {
-    let registers = [
-        "rax", "rbx", "rcx", "rbx", "rsi", "rdi", "rbp", "rsp", 
-        "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
-    ];
-    return registers.contains(&reg);
-}
-
-// duplicate in parser.rs
-fn is_label(sym: &str) -> bool {
-    let v: Vec<&str> = sym.split('$').collect();
-    v.len() == 2 && v[0].len() > 0 && v[1].len() > 0
-}
 
 impl fmt::Display for Asm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -85,16 +71,18 @@ impl fmt::Display for Asm {
             RSI => write!(f, "%rsi"), RDI => write!(f, "%rdi"), RBP => write!(f, "%rbp"), RSP => write!(f, "%rsp"), 
             R8  => write!(f, "%r8"),  R9  => write!(f, "%r9"),  R10 => write!(f, "%r10"), R11 => write!(f, "%r11"), 
             R12 => write!(f, "%r12"), R13 => write!(f, "%r13"), R14 => write!(f, "%r14"), R15 => write!(f, "%r15"),
-            Imm(n) => write!(f, "${}", n),
-            Op2(op, box e1, box e2) => write!(f, "\t{} {}, {}\n", op, e1, e2),
-            Deref(box reg, n) => write!(f, "{}({})", n, reg),
-            DerefLabel(box reg, s) => write!(f, "{}({})", s, reg),
+            RIP => write!(f, "%rip"),
+            Imm (n) => write!(f, "${}", n),
+            Op2 (op, box e1, box e2) => write!(f, "\t{} {}, {}\n", op, e1, e2),
+            Deref (box reg, n) => write!(f, "{}({})", n, reg),
+            DerefLabel (box reg, s) => write!(f, "{}({})", s, reg),
+            Label (s) => write!(f, "{}", s),
             Retq => write!(f, "\tretq\n"),
-            Push (box a) => write!(f, "\tpushq {}", a),
-            Pop (box a) => write!(f, "\tpopq {}", a),
-            Jmp (s) if is_register(s) => write!(f, "\tjmp *%{}\n", s),
-            Jmp (s) => write!(f, "\tjmp {}\n", s),
-            Cfg( labl, codes ) => {
+            Push (box a) => write!(f, "\tpushq {}\n", a),
+            Pop (box a) => write!(f, "\tpopq {}\n", a),
+            Jmp (box Label(s)) => write!(f, "\tjmp {}\n", s),
+            Jmp (box other) => write!(f, "\tjmp *{}\n", other),
+            Cfg (labl, codes) => {
                 let mut codes_str = String::new();
                 for code in codes {
                     codes_str.push_str( &format!("{}", code) );

@@ -128,6 +128,38 @@ fn run_helper(filename: &str) -> String {
     return String::from_utf8_lossy(&output.stdout).to_string();
 }
 
+
+#[test]
+fn compile1() {
+    let s = 
+    "(letrec ()
+      (begin
+        (set! rax 5)
+        (begin
+          (set! rbx 1)
+          (begin
+            (set! rbx (* rbx rax))
+            (begin
+              (set! rax (- rax 1))
+              (begin
+                (set! rbx (* rbx rax))
+                (begin
+                  (set! rax (- rax 1))
+                  (begin
+                    (set! rbx (* rbx rax))
+                    (begin
+                      (set! rax (- rax 1))
+                      (begin
+                        (set! rbx (* rbx rax))
+                        (begin
+                          (set! rax rbx)
+                          (r15))))))))))))";
+    let filename = "c1.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "120\n");
+}
+
 #[test]
 fn compile2() {
     let s = "(letrec ()
@@ -147,4 +179,25 @@ fn compile2() {
     compile(s, filename);
     let r = run_helper(filename);
     assert_eq!(r.as_str(), "120\n");
+}
+
+#[test]
+fn compile3() {
+    let s = "
+    (letrec ([return$1 (lambda ()
+                         (begin
+                           (set! rax fv0)
+                           (fv1)))]
+             [setbit3$0 (lambda ()
+                          (begin
+                            (set! fv0 (logor fv0 8))
+                            (return$1)))])
+      (begin
+        (set! fv0 1)
+        (set! fv1 r15)
+        (setbit3$0)))";
+    let filename = "c3.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "9\n");
 }

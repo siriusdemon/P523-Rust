@@ -17,60 +17,6 @@ impl ParseExpr {
     }
 }
 
-pub struct ExposeFrameVar {}
-impl ExposeFrameVar {
-    pub fn run(&self, expr: Expr) -> Expr {
-        match expr {
-            Letrec(lambdas, box tail) => {
-                let new_lambda: Vec<Expr> = lambdas.into_iter()
-                                                .map(|e| self.replace_fv(e))
-                                                .collect();
-                let new_tail = self.replace_fv(tail);
-                return Letrec(new_lambda, Box::new(new_tail));
-            },
-            _ => panic!("Invalid Program {}", expr),
-        }  
-    }
-
-    fn is_fv(&self, s: &str) -> bool {
-        s.starts_with("fv")
-    }
-
-    fn fv_to_disp(&self, fv :&str) -> Expr {
-        let v :Vec<&str> = fv.split("fv").collect();
-        let index :i64 = v[1].parse().unwrap();
-        return Disp ("rbp".to_string(), index * 8);
-    }
-
-    fn replace_fv(&self, expr: Expr) -> Expr {
-        match expr {
-            Lambda (label, box tail) => Lambda (label, Box::new(self.replace_fv(tail))),
-            Begin (exprs) => {
-                let new_exprs: Vec<Expr> = exprs.into_iter()
-                                                .map(|e| self.replace_fv(e))
-                                                .collect();
-                return Begin (new_exprs); 
-            },
-            Set (box Symbol(s), any) if self.is_fv(&s) => {
-                let disp = self.fv_to_disp(&s);
-                return Set (Box::new(disp), any);
-            },
-            Set (any, box Symbol(s)) if self.is_fv(&s) => {
-                let disp = self.fv_to_disp(&s);
-                return Set (any, Box::new(disp));
-            },
-            Set (any, box Prim2(op, box Symbol(s), any2)) if self.is_fv(&s) => {
-                let disp = self.fv_to_disp(&s);
-                return Set (any, Box::new( Prim2 (op, Box::new(disp), any2)));
-            },
-            Set (any, box Prim2(op, any2, box Symbol(s))) if self.is_fv(&s) => {
-                let disp = self.fv_to_disp(&s);
-                return Set (any, Box::new( Prim2 (op, any2, Box::new(disp))));
-            },
-            e => e,
-        } 
-    }
-}
 
 // diff from P523, we only handed the nested begin
 pub struct FlattenProgram {}
@@ -120,22 +66,22 @@ impl CompileToAsm {
             Letrec(lambdas, box tail) => {
                 // the entry code
                 let label = String::from("_scheme_entry");
-                let mut codes = [
+                let mut codes = vec![
                     Push (Box::new(RBX)),
                     Push (Box::new(RBP)),
                     Push (Box::new(R12)),
                     Push (Box::new(R13)),
                     Push (Box::new(R14)),
                     Push (Box::new(R15)),
-                    self.op2("movq", RDI, RBP);
-                    self.op2("leaq", DerefLabel(RIP, "_scheme_exit".to_string()), R15),
+                    self.op2("movq", RDI, RBP),
+                    self.op2("leaq", DerefLabel(Box::new(RIP), "_scheme_exit".to_string()), R15),
                 ];
-                codes.append(self.tail_to_asm(tail));
+                codes.append(&mut self.tail_to_asm(tail));
                 let cfg = Cfg(label, codes);
                 blocks.push(cfg);
                 // the exit code
                 let label = String::from("_scheme_exit");
-                let codes = [
+                let codes = vec![
                     Pop (Box::new(R15)),
                     Pop (Box::new(R14)),
                     Pop (Box::new(R13)),
@@ -143,7 +89,7 @@ impl CompileToAsm {
                     Pop (Box::new(RBP)),
                     Pop (Box::new(RBX)),
                     Retq,
-                ]
+                ];
                 let cfg = Cfg(label, codes);
                 blocks.push(cfg);
                 // other code blocks
@@ -165,12 +111,7 @@ impl CompileToAsm {
 
     fn tail_to_asm(&self, expr: Expr) -> Vec<Asm> {
         match expr {
-            Begin (exprs) => {
-                let new_exprs: Vec<Asm> = exprs.into_iter()
-                                                .map(|e| self.expr_to_asm(e))
-                                                .collect();
-                return new_exprs;
-            },
+            Begin (exprs) => exprs.into_iter().map(|e| self.expr_to_asm(e)).collect(),
             e => vec![self.expr_to_asm(e)],
         }
     }
@@ -182,9 +123,19 @@ impl CompileToAsm {
     fn asm_binop(&self, op: &str) -> &str {
         match op {
             "+" => "addq", "-" => "subq", "*" => "imulq",
-            "logand" => "",  "logxor" => "", "sra" => "",
+            "logand" => "andq",  "logor" => "orq", "sra" => "sarq",
             _ => panic!("unsupport op {}", op),
         }
+    }
+
+    fn is_fv(&self, s: &str) -> bool {
+        s.starts_with("fv")
+    }
+
+    fn fv_to_deref(&self, fv :&str) -> Asm {
+        let v :Vec<&str> = fv.split("fv").collect();
+        let index :i64 = v[1].parse().unwrap();
+        return Deref (Box::new(RBP), index * 8);
     }
 
     fn is_reg(&self, reg: &str) -> bool {
@@ -218,7 +169,18 @@ impl CompileToAsm {
                 let src = self.expr_to_asm_helper(src);
                 return self.op2("movq", src, dst);
             },
-            Funcall (s) => Jmp (s),
+            Funcall (s) if self.is_fv(&s) => {
+                let deref = self.fv_to_deref(&s);
+                return Jmp (Box::new(deref));
+            },
+            Funcall (s) if self.is_reg(&s) => {
+                let reg = self.string_to_reg(&s);
+                return Jmp (Box::new(reg));
+            },
+            Funcall (s) => {
+                let label = Label (s);
+                return Jmp (Box::new(label));
+            }
             _ => panic!("Invaild Expr to Asm, {}", expr),
         }
     }
@@ -226,7 +188,7 @@ impl CompileToAsm {
     fn expr_to_asm_helper(&self, expr: Expr) -> Asm {
         match expr {
             Symbol (s) if self.is_reg(&s) => self.string_to_reg(&s),
-            Disp (reg, offset) => Deref (Box::new(self.string_to_reg(&reg)), offset),
+            Symbol (s) if self.is_fv(&s) => self.fv_to_deref(&s),
             Int64 (i) => Imm (i),
             e => panic!("Expect Atom Expr, found {}", e),
         }
@@ -257,8 +219,8 @@ pub fn compile_formater<T: std::fmt::Display>(s: &str, expr: &T) {
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseExpr{}.run(s);
     compile_formater("ParseExpr", &expr);
-    let expr = ExposeFrameVar{}.run(expr);
-    compile_formater("ExposeFrameVar", &expr);
+    // let expr = ExposeFrameVar{}.run(expr);
+    // compile_formater("ExposeFrameVar", &expr);
     let expr = FlattenProgram{}.run(expr);
     compile_formater("FlattenProgram", &expr);
     let expr = CompileToAsm{}.run(expr);

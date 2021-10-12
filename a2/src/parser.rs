@@ -141,7 +141,7 @@ impl Parser {
             "letrec" => self.parse_letrec(),
             "begin" => self.parse_begin(),
             "set!" => self.parse_set(),
-            "+" | "-" | "*" => self.parse_prim2(),
+            "+" | "-" | "*" | "logor" | "logand" | "sra" => self.parse_prim2(),
             sym => self.parse_funcall(),
         }
     }
