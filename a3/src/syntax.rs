@@ -3,13 +3,18 @@ use std::fmt;
 #[derive(Debug)]
 pub enum Expr {
     Letrec(Vec<Expr>, Box<Expr>),
+    Locate(Vec<Expr>, Box<Expr>),
     Lambda(String, Box<Expr>),
+    Binding(String, String),
     Begin(Vec<Expr>),
     Prim2(String, Box<Expr>, Box<Expr>),
+    If(Box<Expr>, Box<Expr>, Box<Expr>),
     Set(Box<Expr>, Box<Expr>),
     Symbol(String),
     Funcall(String),
     Int64(i64),
+    Bool(bool),
+    Nop,
 }
 
 
@@ -17,17 +22,25 @@ impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Expr::*;
         match self {
-            Letrec (lambdas, box tail) => {
+            Letrec (lambdas, box body) => {
                 let seqs: Vec<String> = lambdas.into_iter().map(|e| format!("  {}", e)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
                 let seqs_s = seqs_ref.join("\n");
-                let s = format!("(letrec ({}) \n  {})", seqs_s, tail);
+                let s = format!("(letrec ({}) \n  {})", seqs_s, body);
                 write!(f, "{}", s)
             },
-            Lambda (label, box tail) => {
-                let s = format!("({} (lambda () {}))", label, tail);
+            Lambda (label, box body) => {
+                let s = format!("({} (lambda () {}))", label, body);
                 write!(f, "{}", s)
             },
+            Binding (var, val) => write!(f, "({} {})", var, val),
+            Locate (bindings, box tail) => {
+                let seqs: Vec<String> = bindings.into_iter().map(|e| format!("{}", e)).collect();
+                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+                let seqs_s = seqs_ref.join("\n");
+                let s = format!("(locate ({})\n {})", seqs_s, tail);
+                write!(f, "{}", s)
+            }
             Begin ( exprs ) => {
                 let seqs: Vec<String> = exprs.into_iter().map(|e| format!("  {}", e)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
@@ -36,9 +49,12 @@ impl fmt::Display for Expr {
             }
             Set (box e1, box e2) => write!(f, "(set! {} {})", e1, e2),
             Prim2 (op, box e1, box e2) => write!(f, "({} {} {})", op, e1, e2),
+            If (box cond, box b1, box b2) => write!(f, "(if {} {} {})", cond, b1, b2),
             Symbol (s) => write!(f, "{}", s),
             Funcall (name) => write!(f, "({})", name),
             Int64 (i) => write!(f, "{}", i),
+            Bool (b) => write!(f, "({})", b),
+            Nop => write!(f, "(nop)"),
         }
     }
 }

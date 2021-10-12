@@ -143,9 +143,15 @@ impl Parser {
         let top = self.top();
         match top.unwrap().token.as_str() {
             "letrec" => self.parse_letrec(),
+            "locate" => self.parse_locate(),
             "begin" => self.parse_begin(),
             "set!" => self.parse_set(),
-            "+" | "-" | "*" | "logor" | "logand" | "sra" => self.parse_prim2(),
+            "if" => self.parse_if(),
+            "+" | "-" | "*" | "logor" | "logand" | "sra" |
+            "=" | ">" | "<" | ">=" | "<="
+                => self.parse_prim2(),
+            "true" | "false" => self.parse_bool(),
+            "nop" => self.parse_nop(),
             sym => self.parse_funcall(),
         }
     }
@@ -160,11 +166,37 @@ impl Parser {
                 lambdas.push(lambda);
             } else {
                 let _lambda_right = self.remove_top();
-                let tail = self.parse_expr();
-                return Expr::Letrec(lambdas, Box::new(tail));
+                let body = self.parse_expr();
+                return Expr::Letrec(lambdas, Box::new(body));
             }
         }
         panic!("Parse letrec, unexpected eof");
+    }
+
+    fn parse_locate(&mut self) -> Expr {
+        let _locate = self.remove_top();
+        let _binding_left = self.remove_top();
+        let mut bindings = vec![];
+        while let Some(ref t) = self.top() {
+            if t.token.as_str() != ")" {
+                let binding = self.parse_binding();
+                bindings.push(binding);
+            } else {
+                let _binding_right = self.remove_top();
+                let tail = self.parse_expr();
+                let _right = self.remove_top();
+                return Expr::Locate(bindings, Box::new(tail));
+            }
+        }
+        panic!("Parse locate, unexpected eof");
+    }
+
+    fn parse_binding(&mut self) -> Expr {
+        let _left = self.remove_top();
+        let var = self.remove_top().unwrap().token;
+        let val = self.remove_top().unwrap().token;
+        let _right = self.remove_top();
+        return Expr::Binding(var, val);
     }
 
     fn parse_begin(&mut self) -> Expr {
@@ -182,13 +214,23 @@ impl Parser {
         panic!("Parse Begin, unexpected eof");
     }
 
+    fn parse_if(&mut self) -> Expr {
+        let _if = self.remove_top();
+        let cond = self.parse_expr();
+        let b1 = self.parse_expr();
+        let b2 = self.parse_expr();
+        let _right = self.remove_top();
+        return Expr::If(Box::new(cond), Box::new(b1), Box::new(b2));
+    }
+
     fn parse_lambda(&mut self) -> Expr {
         let _left = self.remove_top();
         let label = self.remove_top().unwrap().token;
         // (optional) verify label
         let _lambda_left = self.remove_top();
-        let lambda = self.remove_top().unwrap().token;
-        assert!(lambda.as_str() == "lambda");
+        let lambda = self.remove_top().unwrap();
+        assert!(lambda.token.as_str() == "lambda", 
+            "Expect lambda, got {} at line {} col {}", lambda.token, lambda.line, lambda.col);
         let _args_left = self.remove_top();
         let _args_right = self.remove_top();
         let tail = self.parse_expr();
@@ -224,7 +266,7 @@ impl Parser {
         if verify_symbol(&sym.token.as_str()) {
             return Expr::Symbol(sym.token);
         }
-        panic!("Invalid Symbol {} at {}", sym.token, sym.i);
+        panic!("Invalid Symbol {} at line {} col {}", sym.token, sym.line, sym.col);
     }
 
     fn parse_integer(&mut self) -> Expr {
@@ -234,6 +276,23 @@ impl Parser {
             Ok(t) => Expr::Int64(*t),
             Err(e) => panic!("{} not a valid integer", num.token),
         }
+    }
+
+    fn parse_bool(&mut self) -> Expr {
+        let s = self.remove_top().unwrap().token;
+        let e = match s.as_str() {
+            "true" => Expr::Bool(true),
+            "false" => Expr::Bool(false),
+            any => panic!("Invalid bool value {}", any),
+        };
+        let _right = self.remove_top();
+        return e;
+    }
+
+    fn parse_nop(&mut self) -> Expr {
+        let _nop = self.remove_top();
+        let _right = self.remove_top();
+        return Expr::Nop;
     }
 
     fn top(&self) -> Option<&Token> {

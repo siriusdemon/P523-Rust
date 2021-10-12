@@ -39,3 +39,11 @@ Asm 新增 Deref
 fv is not allowed in funcall
 
 leaq
+
+### 3
+
+修改 syntax 以后，从 letrec 开始改起。新增 parse_locate
+
+需要把所有的 special form 都写上，不然会有奇怪的 bug
+
+如果遇到了 '('，有两种可能，一种是忘记 remove_top 将右边的括号删除，另一种是因为 special form 没覆盖导致的。
