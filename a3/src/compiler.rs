@@ -82,6 +82,16 @@ impl FinalizeLocations {
     }
 }
 
+
+// pub struct ExposeBasicBlocks {}
+// impl ExposeBasicBlocks {
+//     pub fn run(&self, expr: Expr) -> Expr {
+//         match expr {
+
+//         }
+//     }
+// }
+
 // diff from P523, we only handed the nested begin
 pub struct FlattenProgram {}
 impl FlattenProgram {

@@ -47,3 +47,5 @@ leaq
 需要把所有的 special form 都写上，不然会有奇怪的 bug
 
 如果遇到了 '('，有两种可能，一种是忘记 remove_top 将右边的括号删除，另一种是因为 special form 没覆盖导致的。
+
+在 P523，parse 是平淡无奇的，但在这里，parse 是惊心动魄的。:D

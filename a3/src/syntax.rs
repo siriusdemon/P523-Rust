@@ -23,7 +23,7 @@ impl fmt::Display for Expr {
         use Expr::*;
         match self {
             Letrec (lambdas, box body) => {
-                let seqs: Vec<String> = lambdas.into_iter().map(|e| format!("  {}", e)).collect();
+                let seqs: Vec<String> = lambdas.into_iter().map(|e| format!("{}", e)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
                 let seqs_s = seqs_ref.join("\n");
                 let s = format!("(letrec ({}) \n  {})", seqs_s, body);
