@@ -6,8 +6,8 @@ use crate::parser::{Scanner, Parser};
 use Expr::*;
 use Asm::*;
 
-pub struct ParsePass {}
-impl ParsePass {
+pub struct ParseExpr {}
+impl ParseExpr {
     pub fn run(&self, expr: &str) -> Expr {
         let scanner = Scanner::new(expr);
         let tokens = scanner.scan();
@@ -45,10 +45,6 @@ impl ExposeFrameVar {
     fn replace_fv(&self, expr: Expr) -> Expr {
         match expr {
             Lambda (label, box tail) => Lambda (label, Box::new(self.replace_fv(tail))),
-            Funcall (box Symbol(v)) if self.is_fv(&v) => {
-                let disp = self.fv_to_disp(&v);
-                return Funcall ( Box::new(disp) );
-            }
             Begin (exprs) => {
                 let new_exprs: Vec<Expr> = exprs.into_iter()
                                                 .map(|e| self.replace_fv(e))
@@ -116,22 +112,42 @@ impl FlattenProgram {
     }
 }
 
-pub struct CompileToAsmPass {}
-impl CompileToAsmPass {
+pub struct CompileToAsm {}
+impl CompileToAsm {
     pub fn run(&self, expr: Expr) -> Asm {
-        let label = String::from("_scheme_entry");
-        let mut codes = vec![];
+        let mut blocks = vec![];
         match expr {
-            Begin(stats) => {
-                for stat in stats {
-                    let asm_code = self.expr_to_asm(stat);
-                    codes.push(asm_code);
+            Letrec(lambdas, box tail) => {
+                let label = String::from("_scheme_entry");
+                let codes = self.tail_to_asm(tail);
+                let cfg = Cfg(label, codes);
+                blocks.push(cfg);
+                for lambda in lambdas {
+                    match lambda {
+                        Lambda (labl, box lambda_tail) => {
+                            let codes: Vec<Asm> = self.tail_to_asm(lambda_tail);
+                            let cfg = Cfg(labl, codes);
+                            blocks.push(cfg);
+                        }
+                        e => panic!("Expect Lambda, found {}", e),
+                    };
                 }
             }
             _ => panic!("Invalid Program {}", expr),
         }
-        codes.push(Retq);
-        return Cfg(label, codes);
+        return Prog (blocks);
+    }
+
+    fn tail_to_asm(&self, expr: Expr) -> Vec<Asm> {
+        match expr {
+            Begin (exprs) => {
+                let new_exprs: Vec<Asm> = exprs.into_iter()
+                                                .map(|e| self.expr_to_asm(e))
+                                                .collect();
+                return new_exprs;
+            },
+            e => vec![self.expr_to_asm(e)],
+        }
     }
 
     fn op2(&self, op: &str, src: Asm, dst: Asm) -> Asm {
@@ -141,8 +157,17 @@ impl CompileToAsmPass {
     fn asm_binop(&self, op: &str) -> &str {
         match op {
             "+" => "addq", "-" => "subq", "*" => "imulq",
+            "logand" => "",  "logxor" => "", "sra" => "",
             _ => panic!("unsupport op {}", op),
         }
+    }
+
+    fn is_reg(&self, reg: &str) -> bool {
+        let registers = [
+            "rax", "rbx", "rcx", "rbx", "rsi", "rdi", "rbp", "rsp", 
+            "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+        ];
+        return registers.contains(&reg);
     }
 
     fn string_to_reg(&self, s: &str) -> Asm {
@@ -157,35 +182,36 @@ impl CompileToAsmPass {
     
     fn expr_to_asm(&self, expr: Expr) -> Asm {
         match expr {
-            Set (box Symbol(s), box Int64(i)) => {
-                let dst = self.string_to_reg(&s);
-                return self.op2("movq", Imm(i), dst);
-            },
-            Set (box Symbol(v1), box Symbol(v2)) => {
-                let dst = self.string_to_reg(&v1);
-                let src = self.string_to_reg(&v2);
-                return self.op2("movq", src, dst);
-            },
-            Set (box Symbol(s), box Prim2(op, box _, box Int64(i))) => {
-                let dst = self.string_to_reg(&s);
-                let binop = self.asm_binop(&op);
-                return self.op2(binop, Imm(i), dst);
-            },
-            Set (box Symbol(v1), box Prim2(op, box _, box Symbol(v3))) => {
-                let dst = self.string_to_reg(&v1);
-                let src = self.string_to_reg(&v3);
+            Set (box dst, box Prim2(op, box _, box src)) => {
+                let dst = self.expr_to_asm_helper(dst);
+                let src = self.expr_to_asm_helper(src);
                 let binop = self.asm_binop(&op);
                 return self.op2(binop, src, dst);
             },
-            _ => panic!("Expect Set, found {}", expr),
+            Set (box dst, box src) => {
+                let dst = self.expr_to_asm_helper(dst);
+                let src = self.expr_to_asm_helper(src);
+                return self.op2("movq", src, dst);
+            },
+            Funcall (s) => Jmp (s),
+            _ => panic!("Invaild Expr to Asm, {}", expr),
+        }
+    }
+
+    fn expr_to_asm_helper(&self, expr: Expr) -> Asm {
+        match expr {
+            Symbol (s) if self.is_reg(&s) => self.string_to_reg(&s),
+            Disp (reg, offset) => Deref (Box::new(self.string_to_reg(&reg)), offset),
+            Int64 (i) => Imm (i),
+            e => panic!("Expect Atom Expr, found {}", e),
         }
     }
 }
 
 
 
-pub struct GenerateAsmPass {}
-impl GenerateAsmPass {
+pub struct GenerateAsm {}
+impl GenerateAsm {
     pub fn run(&self, code: Asm, filename: &str) -> std::io::Result<()> {
         let mut file = File::create(filename)?;
         file.write(b".globl _scheme_entry\n")?;
@@ -218,11 +244,13 @@ pub fn compile_formater<T: std::fmt::Display>(s: &str, expr: &T) {
 }
 
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
-    let expr = ParsePass{}.run(s);
-    compile_formater("ParsePass", &expr);
+    let expr = ParseExpr{}.run(s);
+    compile_formater("ParseExpr", &expr);
     let expr = ExposeFrameVar{}.run(expr);
     compile_formater("ExposeFrameVar", &expr);
     let expr = FlattenProgram{}.run(expr);
     compile_formater("FlattenProgram", &expr);
+    let expr = CompileToAsm{}.run(expr);
+    compile_formater("CompileToAsm", &expr);
     Ok(())
 }

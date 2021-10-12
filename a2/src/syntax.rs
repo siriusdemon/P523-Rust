@@ -8,8 +8,7 @@ pub enum Expr {
     Prim2(String, Box<Expr>, Box<Expr>),
     Set(Box<Expr>, Box<Expr>),
     Symbol(String),
-    Label(String),
-    Funcall(Box<Expr>),
+    Funcall(String),
     Int64(i64),
     Disp(String, i64),
 }
@@ -39,8 +38,7 @@ impl fmt::Display for Expr {
             Set (box e1, box e2) => write!(f, "(set! {} {})", e1, e2),
             Prim2 (op, box e1, box e2) => write!(f, "({} {} {})", op, e1, e2),
             Symbol (s) => write!(f, "{}", s),
-            Label (label) => write!(f, "{}", label),
-            Funcall (box name) => write!(f, "({})", name),
+            Funcall (name) => write!(f, "({})", name),
             Int64 (i) => write!(f, "{}", i),
             Disp (reg, offset) => write!(f, "#<disp {} {}>", reg, offset),
         }
@@ -53,10 +51,12 @@ pub enum Asm {
     RSP, RBP, RAX, RBX, RCX, RDX, RSI, RDI, 
     R8, R9, R10, R11, R12, R13, R14, R15,
     Imm(i64),
-    Deref(),
+    Deref(Box<Asm>, i64),
     Op2(String, Box<Asm>, Box<Asm>),
     Retq,
     Cfg(String, Vec<Asm>),
+    Jmp(String),
+    Prog(Vec<Asm>),
 }
 
 
@@ -71,8 +71,23 @@ impl fmt::Display for Asm {
             R12 => write!(f, "%r12"), R13 => write!(f, "%r13"), R14 => write!(f, "%r14"), R15 => write!(f, "%r15"),
             Imm(n) => write!(f, "${}", n),
             Op2(op, box e1, box e2) => write!(f, "\t{} {}, {}\n", op, e1, e2),
+            Deref(box reg, n) => write!(f, "{}({})", n, reg),
             Retq => write!(f, "\tretq\n"),
-            e => write!(f, "DEBUG INFO\n{:?}", e)
+            Jmp(s) => write!(f, "\tjmp {}\n", s),
+            Cfg( labl, codes ) => {
+                let mut codes_str = String::new();
+                for code in codes {
+                    codes_str.push_str( &format!("{}", code) );
+                }
+                return write!(f, "{}:\n{}", labl, codes_str);
+            }
+            Prog (cfgs) => {
+                let mut codes_str = String::new();
+                for cfg in cfgs {
+                    codes_str.push_str( &format!("{}\n", cfg) );
+                }
+                return write!(f, "{}", codes_str);
+            }
         }
     }
 }

@@ -130,7 +130,6 @@ impl Parser {
         match chars[0] {
             '0' ..= '9' => self.parse_integer(),
             '-' => self.parse_integer(),
-            e if verify_label(token) => self.parse_label(),
             e => self.parse_symbol(),
         }
     }
@@ -143,7 +142,7 @@ impl Parser {
             "begin" => self.parse_begin(),
             "set!" => self.parse_set(),
             "+" | "-" | "*" => self.parse_prim2(),
-            label => self.parse_funcall(),
+            sym => self.parse_funcall(),
         }
     }
 
@@ -197,7 +196,7 @@ impl Parser {
     fn parse_funcall(&mut self) -> Expr {
         let labl = self.remove_top().unwrap();
         let _right = self.remove_top();
-        return Expr::Funcall(Box::new(Symbol(labl.token)));
+        return Expr::Funcall(labl.token);
     }
 
     fn parse_set(&mut self) -> Expr {
@@ -222,11 +221,6 @@ impl Parser {
             return Expr::Symbol(sym.token);
         }
         panic!("Invalid Symbol {} at {}", sym.token, sym.i);
-    }
-
-    fn parse_label(&mut self) -> Expr {
-        let labl = self.remove_top().unwrap();
-        return Expr::Label(labl.token);
     }
 
     fn parse_integer(&mut self) -> Expr {
