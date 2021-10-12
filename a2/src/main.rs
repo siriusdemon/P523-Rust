@@ -11,17 +11,19 @@ use compiler::compile;
 
 fn main() -> std::io::Result<()> {
     let s = "
-    (letrec ((return$1 (lambda ()
-                         (begin
-                           (set! rax fv0)
-                           (fv1))))
-             (setbit3$0 (lambda ()
-                          (begin
-                            (set! fv0 (logor fv0 8))
-                            (return$1)))))
+    (letrec ((div$0 (lambda ()
+                      (begin
+                        (set! fv2 (sra fv2 1))
+                        (div$1))))
+             (div$1 (lambda ()
+                      (begin
+                        (set! rax fv2)
+                        (fv0)))))
       (begin
-        (set! fv0 1)
-        (set! fv1 r15)
-        (setbit3$0)))";
+        (set! fv0 r15)
+        (set! rax div$0)
+        (set! fv1 rax)
+        (set! fv2 64)
+        (fv1)))";
     compile(s, "t.s")
 }

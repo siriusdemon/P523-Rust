@@ -30,10 +30,12 @@ P523 Course in Rust
 
 ExposeFrameVar 被融合进 CompileToAsm
 
-Scanner 对每个 Token 增加了行与列的属性
+Scanner 对每个 Token 增加了行与列的属性，并且跳过注释
 
 Expr 新增 letrec, label, lambda, disp
 
 Asm 新增 Deref
 
 fv is not allowed in funcall
+
+leaq

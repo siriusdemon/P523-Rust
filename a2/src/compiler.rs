@@ -132,6 +132,11 @@ impl CompileToAsm {
         s.starts_with("fv")
     }
 
+    fn is_label(&self, sym: &str) -> bool {
+        let v: Vec<&str> = sym.split('$').collect();
+        v.len() == 2 && v[0].len() > 0 && v[1].len() > 0
+    }
+
     fn fv_to_deref(&self, fv :&str) -> Asm {
         let v :Vec<&str> = fv.split("fv").collect();
         let index :i64 = v[1].parse().unwrap();
@@ -140,7 +145,7 @@ impl CompileToAsm {
 
     fn is_reg(&self, reg: &str) -> bool {
         let registers = [
-            "rax", "rbx", "rcx", "rbx", "rsi", "rdi", "rbp", "rsp", 
+            "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp", 
             "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
         ];
         return registers.contains(&reg);
@@ -158,6 +163,11 @@ impl CompileToAsm {
     
     fn expr_to_asm(&self, expr: Expr) -> Asm {
         match expr {
+            Set (box Symbol(dst), box Symbol(src)) if self.is_label(&src) && self.is_reg(&dst) => {
+                let src = DerefLabel (Box::new(RIP), src);                
+                let dst = self.string_to_reg(&dst);
+                return self.op2("leaq", src, dst);
+            },
             Set (box dst, box Prim2(op, box _, box src)) => {
                 let dst = self.expr_to_asm_helper(dst);
                 let src = self.expr_to_asm_helper(src);
@@ -189,6 +199,7 @@ impl CompileToAsm {
         match expr {
             Symbol (s) if self.is_reg(&s) => self.string_to_reg(&s),
             Symbol (s) if self.is_fv(&s) => self.fv_to_deref(&s),
+            Symbol (s) => Label (s),
             Int64 (i) => Imm (i),
             e => panic!("Expect Atom Expr, found {}", e),
         }
@@ -219,8 +230,6 @@ pub fn compile_formater<T: std::fmt::Display>(s: &str, expr: &T) {
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseExpr{}.run(s);
     compile_formater("ParseExpr", &expr);
-    // let expr = ExposeFrameVar{}.run(expr);
-    // compile_formater("ExposeFrameVar", &expr);
     let expr = FlattenProgram{}.run(expr);
     compile_formater("FlattenProgram", &expr);
     let expr = CompileToAsm{}.run(expr);

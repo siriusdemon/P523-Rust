@@ -40,7 +40,7 @@ impl Scanner {
         return res
     }
 
-    pub fn scan_expr(&self, i: usize, line: &mut usize, col: &mut usize, tokens: &mut Vec<Token>) -> usize {
+    pub fn scan_expr(&self, mut i: usize, line: &mut usize, col: &mut usize, tokens: &mut Vec<Token>) -> usize {
         // if i >= self.expr.len() { return i; }
 
         let c = self.expr[i];
@@ -59,6 +59,15 @@ impl Scanner {
                 *col = 0;
                 *line += 1;
                 i + 1
+            }
+            ';' => {
+                i = i + 1;  // skip ;
+                while self.expr[i] != '\n' {
+                    i = i + 1;
+                }
+                *col = 0;
+                *line += 1;
+                return i;
             }
             e => self.scan_sym(i, line, col, tokens),
         }
@@ -95,11 +104,6 @@ fn verify_symbol(sym: &str) -> bool {
         }
     }
     return true;
-}
-
-fn verify_label(sym: &str) -> bool {
-    let v: Vec<&str> = sym.split('$').collect();
-    v.len() == 2 && v[0].len() > 0 && v[1].len() > 0
 }
 
 impl Parser {
@@ -181,7 +185,7 @@ impl Parser {
     fn parse_lambda(&mut self) -> Expr {
         let _left = self.remove_top();
         let label = self.remove_top().unwrap().token;
-        assert!(verify_label(&label), "invalid label {} in lambda expr", label);
+        // (optional) verify label
         let _lambda_left = self.remove_top();
         let lambda = self.remove_top().unwrap().token;
         assert!(lambda.as_str() == "lambda");
