@@ -1,5 +1,7 @@
 use std::io::Write;
 use std::fs::File;
+use std::collections::HashMap;
+
 use crate::syntax::{Expr, Asm};
 use crate::parser::{Scanner, Parser};
 
@@ -17,6 +19,68 @@ impl ParseExpr {
     }
 }
 
+
+pub struct FinalizeLocations {}
+impl FinalizeLocations {
+    pub fn run(&self, expr: Expr) -> Expr {
+        match expr {
+            Letrec (lambdas, box body) => {
+                let new_lambda: Vec<Expr> = lambdas.into_iter()
+                                                .map(|e| self.remove_locate(e))
+                                                .collect();
+                let tail = self.remove_locate(body);
+                return Letrec(new_lambda, Box::new(tail));
+            }
+            _ => panic!("Invalid Program {}", expr),
+        }
+    }
+
+    fn remove_locate(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (label, box body) => Lambda (label, Box::new(self.remove_locate(body))),
+            Locate (bindings, box tail) => self.replace_uvar(&bindings, tail),
+            e => e,
+        }
+    }
+
+    fn replace_uvar(&self, bindings: &HashMap<String, String>, tail: Expr) -> Expr {
+        match tail {
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.replace_uvar(bindings, pred);
+                let new_b1 = self.replace_uvar(bindings, b1);
+                let new_b2 = self.replace_uvar(bindings, b2);
+                return If ( Box::new(new_pred), Box::new(new_b1), Box::new(new_b2) );
+            }
+            Begin (exprs) => {
+                let new_exprs: Vec<Expr> = exprs.into_iter().map(|e| self.replace_uvar(bindings, e)).collect();
+                return Begin (new_exprs);
+            }
+            Set (box e1, box e2) => {
+                let new_e1 = self.replace_uvar(bindings, e1);
+                let new_e2 = self.replace_uvar(bindings, e2);
+                return Set (Box::new(new_e1), Box::new(new_e2));
+            },
+            Prim2 (op, box e1, box e2) => {
+                let new_e1 = self.replace_uvar(bindings, e1);
+                let new_e2 = self.replace_uvar(bindings, e2);
+                return Prim2 (op, Box::new(new_e1), Box::new(new_e2));
+            },
+            Funcall (name) => {
+                match bindings.get(&name) {
+                    None => Funcall (name),
+                    Some (loc) => Funcall (loc.to_string()),
+                }
+            },
+            Symbol (s) => {
+                match bindings.get(&s) {
+                    None => Symbol (s),
+                    Some (loc) => Symbol (loc.to_string()),
+                }
+            },
+            e => e,
+        }
+    }
+}
 
 // diff from P523, we only handed the nested begin
 pub struct FlattenProgram {}
@@ -230,9 +294,12 @@ pub fn compile_formater<T: std::fmt::Display>(s: &str, expr: &T) {
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseExpr{}.run(s);
     compile_formater("ParseExpr", &expr);
-    let expr = FlattenProgram{}.run(expr);
-    compile_formater("FlattenProgram", &expr);
-    let expr = CompileToAsm{}.run(expr);
-    compile_formater("CompileToAsm", &expr);
-    return GenerateAsm{}.run(expr, filename)
+    let expr = FinalizeLocations{}.run(expr);
+    compile_formater("FinalizeLocation", &expr);
+    // let expr = FlattenProgram{}.run(expr);
+    // compile_formater("FlattenProgram", &expr);
+    // let expr = CompileToAsm{}.run(expr);
+    // compile_formater("CompileToAsm", &expr);
+    // return GenerateAsm{}.run(expr, filename)
+    Ok(())
 }

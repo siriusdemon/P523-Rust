@@ -1,11 +1,11 @@
 use std::fmt;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum Expr {
     Letrec(Vec<Expr>, Box<Expr>),
-    Locate(Vec<Expr>, Box<Expr>),
+    Locate(HashMap<String, String>, Box<Expr>),
     Lambda(String, Box<Expr>),
-    Binding(String, String),
     Begin(Vec<Expr>),
     Prim2(String, Box<Expr>, Box<Expr>),
     If(Box<Expr>, Box<Expr>, Box<Expr>),
@@ -33,11 +33,10 @@ impl fmt::Display for Expr {
                 let s = format!("({} (lambda () {}))", label, body);
                 write!(f, "{}", s)
             },
-            Binding (var, val) => write!(f, "({} {})", var, val),
             Locate (bindings, box tail) => {
-                let seqs: Vec<String> = bindings.into_iter().map(|e| format!("{}", e)).collect();
+                let seqs: Vec<String> = bindings.iter().map(|(k, v)| format!("({} {})", k, v)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
-                let seqs_s = seqs_ref.join("\n");
+                let seqs_s = seqs_ref.join(" ");
                 let s = format!("(locate ({})\n {})", seqs_s, tail);
                 write!(f, "{}", s)
             }

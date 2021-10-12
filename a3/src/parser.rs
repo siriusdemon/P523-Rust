@@ -1,4 +1,6 @@
 use std::vec::IntoIter;
+use std::collections::HashMap;
+
 use crate::syntax::*;
 
 #[derive(Debug, Clone)]
@@ -176,11 +178,11 @@ impl Parser {
     fn parse_locate(&mut self) -> Expr {
         let _locate = self.remove_top();
         let _binding_left = self.remove_top();
-        let mut bindings = vec![];
+        let mut bindings = HashMap::new();
         while let Some(ref t) = self.top() {
             if t.token.as_str() != ")" {
-                let binding = self.parse_binding();
-                bindings.push(binding);
+                let (key, val) = self.parse_binding();
+                bindings.insert(key, val);
             } else {
                 let _binding_right = self.remove_top();
                 let tail = self.parse_expr();
@@ -191,12 +193,12 @@ impl Parser {
         panic!("Parse locate, unexpected eof");
     }
 
-    fn parse_binding(&mut self) -> Expr {
+    fn parse_binding(&mut self) -> (String, String) {
         let _left = self.remove_top();
         let var = self.remove_top().unwrap().token;
         let val = self.remove_top().unwrap().token;
         let _right = self.remove_top();
-        return Expr::Binding(var, val);
+        return (var, val);
     }
 
     fn parse_begin(&mut self) -> Expr {
