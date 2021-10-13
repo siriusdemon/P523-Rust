@@ -209,6 +209,7 @@ impl Parser {
                 let expr = self.parse_expr();
                 begin_exprs.push(expr);
             } else {
+                assert!(begin_exprs.len() > 0, "begin expr is empty!");
                 let _right = self.remove_top();
                 return Expr::Begin(begin_exprs);
             }

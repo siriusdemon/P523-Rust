@@ -49,3 +49,10 @@ leaq
 如果遇到了 '('，有两种可能，一种是忘记 remove_top 将右边的括号删除，另一种是因为 special form 没覆盖导致的。
 
 在 P523，parse 是平淡无奇的，但在这里，parse 是惊心动魄的。:D
+
+
++ expose-basic-blocks
+因为 if 语句可以出现在 tail, Effect 以及 pred 当中，所以要处理这三种情况
+
+
+随着开发的推进，在 parser 和 scanner 有一些小的改进，散落在各个角落，但仍不影响原来的架构。
