@@ -228,7 +228,8 @@ impl Parser {
 
     fn parse_lambda(&mut self) -> Expr {
         let _left = self.remove_top();
-        let label = self.remove_top().unwrap().token;
+        // here, I choose to change any `-` to `_` to avoid annoying GAS
+        let label = self.remove_top().unwrap().token.replace("-", "_");
         // (optional) verify label
         let _lambda_left = self.remove_top();
         let lambda = self.remove_top().unwrap();

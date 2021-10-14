@@ -86,3 +86,7 @@ l$2 ...
 
 ### CompileToAsm
 cmpq S2, S1 => S1 - S2
+
+
+locate 可以不存在，A2 的 PASS 能够通过，较 P523 更宽松。
+
