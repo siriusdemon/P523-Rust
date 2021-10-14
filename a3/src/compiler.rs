@@ -88,11 +88,14 @@ pub struct ExposeBasicBlocks {}
 impl ExposeBasicBlocks {
     pub fn run(&self, expr: Expr) -> Expr {
         match expr {
-            Letrec (mut lambdas, box mut tail) => {
+            Letrec (mut lambdas, box tail) => {
                 let mut new_lambdas = vec![];
-                let (lambdas, new_tail) = self.expose_block(lambdas, tail, &mut new_lambdas);
-                new_lambdas.append(&mut lambdas);
-                return Letrec (new_lambdas, Box::new(new_tail));
+                let (mut lambdas, new_tail) = self.expose_block(lambdas, tail, &mut new_lambdas);
+                // since we process the later first, reverse to keep the original order
+                while let Some(new_lambda) = new_lambdas.pop() {
+                    lambdas.push(new_lambda)
+                }
+                return Letrec (lambdas, Box::new(new_tail));
             }
             _ => panic!("Invalid Program {}", expr),
         }
@@ -119,19 +122,17 @@ impl ExposeBasicBlocks {
             Begin (mut exprs) => {
                 let tail = exprs.pop().unwrap();
                 let new_tail = self.tail_helper(tail, new_lambdas);
-                let mut new_exprs = self.effects_helper(exprs, new_lambdas);
-                new_exprs.push(new_tail);
-                return Begin (new_exprs);
+                return self.effects_helper(exprs, new_tail, new_lambdas);
             }
-            If (box Bool(true), box b1, _) => self.tail_helper(b1),
-            If (box Bool(false), _, box b2) => self.tail_helper(b2),
+            If (box Bool(true), box b1, _) => self.tail_helper(b1, new_lambdas),
+            If (box Bool(false), _, box b2) => self.tail_helper(b2, new_lambdas),
             If (box pred, box b1, box b2) => {
                 let lab1 = self.gensym();
                 let new_b1 = self.tail_helper(b1, new_lambdas); 
                 self.add_binding(&lab1, new_b1, new_lambdas);
 
                 let lab2 = self.gensym();
-                let new_b2 = self.tail_helper(b2, new_lambdas;)
+                let new_b2 = self.tail_helper(b2, new_lambdas);
                 self.add_binding(&lab2, new_b2, new_lambdas);
 
                 return self.pred_helper(pred, &lab1, &lab2, new_lambdas);
@@ -140,27 +141,23 @@ impl ExposeBasicBlocks {
         }
     }
 
-    // In any context, when we encounter an if, it become a tail.
     fn pred_helper(&self, e: Expr, lab1: &str, lab2: &str, new_lambdas: &mut Vec<Expr>) -> Expr {
         match e {
-            // Begin is not allowed in pred any more
-            Begin ( mut exprs ) => {
+            Begin (mut exprs) => {
                 let pred = exprs.pop().unwrap();
                 let new_pred = self.pred_helper(pred, lab1, lab2, new_lambdas);
-                let mut new_exprs = self.effects_helper(exprs, new_lambdas);
-                new_exprs.push(new_pred);
-                return Begin (new_exprs);
+                return self.effects_helper(exprs, new_pred, new_lambdas);
             }
             Bool (true) => Funcall (lab1.to_string()),
             Bool (false) => Funcall (lab2.to_string()),
             If (box pred, box br1, box br2) => {
                 let new_lab1 = self.gensym();
                 let new_br1 = self.pred_helper(br1, lab1, lab2, new_lambdas);
-                self.add_binding(&new_lab1, new_br1);
+                self.add_binding(&new_lab1, new_br1, new_lambdas);
 
                 let new_lab2 = self.gensym();
                 let new_br2 = self.pred_helper(br2, lab1, lab2, new_lambdas);
-                self.add_binding(&new_lab2, new_br2);
+                self.add_binding(&new_lab2, new_br2, new_lambdas);
                 
                 return self.pred_helper(pred, &new_lab1, &new_lab2, new_lambdas);
             }
@@ -168,34 +165,39 @@ impl ExposeBasicBlocks {
         }
     }
 
-    fn effects_helper(&self, effects: Vec<Expr>, new_lambdas: &mut Vec<Expr>) -> Vec<Expr> {
-        let mut effects = effects.into_iter();
-        if let Some(head) = effects.next() {
-            return self.effect_helper(head, effects, new_lambdas);
-        } 
-        return vec![];
+    fn effects_helper(&self, mut effects: Vec<Expr>, mut tail: Expr, new_lambdas: &mut Vec<Expr>) -> Expr {
+        while let Some(effect) = effects.pop() {
+            tail = self.effect_helper(effect, tail, new_lambdas);
+        }
+        return tail;
     }
 
-    // since tail is the only one allowed to have recursive, some every one should return to tail.
-    fn effect_helper(&self, effect: Expr, rest: IntoIter<Expr>, new_lambdas: &mut Vec<Expr>) -> Vec<Expr> {
+    fn effect_helper(&self, effect: Expr, tail: Expr, new_lambdas: &mut Vec<Expr>) -> Expr {
         match effect {
-            If (box Bool(true), box b1, _) => self.effect_helper(b1, rest, new_lambdas),
-            If (box Bool(false),  _, box b2) => self.effect_helper(b2, rest, new_lambdas),
+            Begin (mut exprs) => {
+                let effect = exprs.pop().unwrap();
+                let new_tail = self.effect_helper(effect, tail, new_lambdas); 
+                return self.effects_helper(exprs, new_tail, new_lambdas);
+            }
+            If (box Bool(true), box b1, _) => self.effect_helper(b1, tail, new_lambdas),
+            If (box Bool(false),  _, box b2) => self.effect_helper(b2, tail, new_lambdas),
             If (box pred, box b1, box b2) => {
+                // the join blocks
                 let lab_tail = self.gensym();
-                let tail = self.effects_helper(rest, tail, new_lambdas);
                 self.add_binding(&lab_tail, tail, new_lambdas);
-
+                // first branch, jump to the join block
                 let lab1 = self.gensym();
-                let new_b1 = self.effect_helper(b1, );
-                self.add_binding(&labl, new_b1, new_lambdas);
-
+                let new_b1 = self.effect_helper(b1, Funcall (lab_tail.clone()), new_lambdas);
+                self.add_binding(&lab1, new_b1, new_lambdas);
+                // second branch, jump to the join block too
                 let lab2 = self.gensym();
-                let new_b2 = self.effect_helper(b2);
+                let new_b2 = self.effect_helper(b2, Funcall (lab_tail), new_lambdas);
                 self.add_binding(&lab2, new_b2, new_lambdas);
                 // since a single expr seq break into several blocks, an effect turn into a tail.
-                return pred_helper(pred, &lab1, &lab2, new_lambdas);
+                return self.pred_helper(pred, &lab1, &lab2, new_lambdas);
             }
+            Nop => tail,
+            e => Begin (vec![e, tail]),
         }
     }
 
@@ -204,10 +206,10 @@ impl ExposeBasicBlocks {
         new_lambdas.push(lambda);        
     }
 
-    fn gensym() -> String {
+    fn gensym(&self) -> String {
         use uuid::Uuid;
         let uid = &Uuid::new_v4().to_string()[..8];
-        let mut s = String::from("tmp");
+        let mut s = String::from("tmp$");
         s.push_str(uid);
         return s;
     }
@@ -251,6 +253,11 @@ impl FlattenProgram {
             }
         }
     }
+}
+
+pub struct OptimizeJump {}
+impl OptimizeJump {
+
 }
 
 pub struct CompileToAsm {}
@@ -427,8 +434,10 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formater("ParseExpr", &expr);
     let expr = FinalizeLocations{}.run(expr);
     compile_formater("FinalizeLocation", &expr);
-    // let expr = FlattenProgram{}.run(expr);
-    // compile_formater("FlattenProgram", &expr);
+    let expr = ExposeBasicBlocks{}.run(expr);
+    compile_formater("ExposeBasicBlocks", &expr);
+    let expr = FlattenProgram{}.run(expr);
+    compile_formater("FlattenProgram", &expr);
     // let expr = CompileToAsm{}.run(expr);
     // compile_formater("CompileToAsm", &expr);
     // return GenerateAsm{}.run(expr, filename)

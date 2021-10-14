@@ -42,6 +42,8 @@ leaq
 
 ### 3
 
+随着开发的推进，在 parser 和 scanner 有一些小的改进，散落在各个角落，但仍不影响原来的架构。
+
 修改 syntax 以后，从 letrec 开始改起。新增 parse_locate
 
 需要把所有的 special form 都写上，不然会有奇怪的 bug
@@ -52,7 +54,17 @@ leaq
 
 
 + expose-basic-blocks
-因为 if 语句可以出现在 tail, Effect 以及 pred 当中，所以要处理这三种情况
 
+这是我遇到的第一个有难度的 PASS。虽然分析出解法不容易，但代码的实现却异常的简单。
 
-随着开发的推进，在 parser 和 scanner 有一些小的改进，散落在各个角落，但仍不影响原来的架构。
+写代码前应该先想清楚。
+观察输入的语法，发现
+
++ tail, effect, pred 当中都可以出现 if 和 begin，这两种语句是重点要处理的
++ 新的语法中，if 只能出现在 tail，故知，effect 和 pred 中的 if 要转换成 tail
++ tail 是处理入口，因此 tail_helper 先写，它应该返回一个 tail
++ pred_helper 需要生成 blocks 和跳转，因此，它的返回也是一个 tail，跳往新的 blocks
++ effects 只能出现在 begin 中，故知 effects_helper 需要返回一个 Begin。
++ effect_helper 注意，effect 并不能作为一个 block 的结尾，所以它需要传入一个 tail，它的返回也应该是一个 tail。
+
+给自己预留点思考的时间吧！学而不思则罔。

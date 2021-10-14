@@ -7,6 +7,7 @@ pub enum Expr {
     Locate(HashMap<String, String>, Box<Expr>),
     Lambda(String, Box<Expr>),
     Begin(Vec<Expr>),
+    Prim1(String, Box<Expr>),
     Prim2(String, Box<Expr>, Box<Expr>),
     If(Box<Expr>, Box<Expr>, Box<Expr>),
     Set(Box<Expr>, Box<Expr>),
@@ -47,6 +48,7 @@ impl fmt::Display for Expr {
                 write!(f, "(begin \n{})", seqs_s)
             }
             Set (box e1, box e2) => write!(f, "(set! {} {})", e1, e2),
+            Prim1 (op, box e) => write!(f, "({} {})", op, e),
             Prim2 (op, box e1, box e2) => write!(f, "({} {} {})", op, e1, e2),
             If (box cond, box b1, box b2) => write!(f, "(if {} {} {})", cond, b1, b2),
             Symbol (s) => write!(f, "{}", s),
