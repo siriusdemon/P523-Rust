@@ -254,6 +254,9 @@ impl OptimizeJump {
                 If (relop, lab1, box Funcall (lab2)) if &lab2 == next_lab => {
                     return If1 (relop, lab1);
                 }
+                Funcall (lab) if &lab == next_lab => {
+                    return Nop;
+                }
                 e => { return self.reduce_if2(e); }
             };
         }
@@ -478,6 +481,7 @@ impl CompileToAsm {
                 let jmp = Jmpif (self.relop_to_cc(&relop, false).to_string(), Box::new(Label (s)));
                 return Code (vec![cond, jmp]);
             }
+            Nop => Code (vec![]),
             _ => panic!("Invaild Expr to Asm, {}", expr),
         }
     }
