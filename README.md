@@ -40,7 +40,7 @@ fv is not allowed in funcall
 
 leaq
 
-### 3
+### week3
 
 随着开发的推进，在 parser 和 scanner 有一些小的改进，散落在各个角落，但仍不影响原来的架构。
 
@@ -84,9 +84,16 @@ l$2 ...
 对汇编代码进行拓扑排序，减少不必要的 jmp，理应能够提升性能。但现在先不考虑这么多的优化吧！
 
 
-### CompileToAsm
++ CompileToAsm
 cmpq S2, S1 => S1 - S2
 
 
 locate 可以不存在，A2 的 PASS 能够通过，较 P523 更宽松。
 
+NOTE:
+
+这一节，if-test 会在 parse 的时候变成　if_test，因为 Gna Assembler 不允许 if-test 这样的标签。
+
+这一节的　Jump 还有可优化的地方。
+
+且 cmpq 没有对常数进行检查。

@@ -99,3 +99,55 @@ fn compile3() {
     let r = run_helper(filename);
     assert_eq!(r.as_str(), "2\n");
 }
+
+#[test]
+fn compile4() {
+    let s = "
+    (letrec ()
+      (locate ([n.1 rdi])
+        (begin 
+          (set! rax 10)
+          (set! rbx 2)
+          (if (< rax rbx)
+              (set! rax 10)
+              (set! rax 2))
+          (r15))))";
+    let filename = "c4.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "2\n");
+}
+
+#[test]
+#[should_panic()]
+fn compile5() {
+    let s = "
+    (letrec ()
+      (locate ([n.1 rdi])
+        (begin 
+          (if (< 10 2)
+              (set! rax 10)
+              (set! rax 2))
+          (r15))))";
+    let filename = "c5.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "2\n");
+}
+
+#[test]
+fn compile6() {
+    let s = "
+    (letrec ()
+      (locate ([n.1 rdi])
+        (begin 
+          (set! rax 2)
+          (if (< 10 rax)
+              (set! rax 10)
+              (set! rax 2))
+          (r15))))";
+    let filename = "c6.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "2\n");
+}

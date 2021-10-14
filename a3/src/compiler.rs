@@ -220,27 +220,26 @@ impl OptimizeJump {
     pub fn run(&self, expr: Expr) -> Expr {
         match expr {
             Letrec (lambdas, box tail) => {
-                let new_lambdas = self.optimize_jump(lambdas);
-                let new_tail = self.reduce_if2(tail);
-                return Letrec (new_lambdas, Box::new(new_tail));
+                let mut new_lambdas = vec![];
+                let mut rest = lambdas.into_iter();
+                let mut head = rest.next();
+                let mut next = rest.next();
+                // main block
+                let letrec_tail = self.reduce(tail, &head);
+                // lambda block
+                while let Some(Lambda(label, box tail)) = head {
+                    let new_tail = self.reduce(tail, &next);
+                    let new_lambda = Lambda (label, Box::new(new_tail));
+                    new_lambdas.push(new_lambda);
+                    head = next;
+                    next = rest.next();
+                }
+                return Letrec (new_lambdas, Box::new(letrec_tail));
             }
             e => panic!("Invalid Program {}", e),
         } 
     }
-    fn optimize_jump(&self, lambdas: Vec<Expr>) -> Vec<Expr> {
-        let mut new_lambdas = vec![];
-        let mut rest = lambdas.into_iter();
-        let mut head = rest.next();
-        let mut next = rest.next();
-        while let Some(Lambda(label, box tail)) = head {
-            let new_tail = self.reduce(tail, &next);
-            let new_lambda = Lambda (label, Box::new(new_tail));
-            new_lambdas.push(new_lambda);
-            head = next;
-            next = rest.next();
-        }
-        return new_lambdas;
-    }   
+
     fn reduce(&self, expr: Expr, next: &Option<Expr>) -> Expr {
         if let Some(Lambda (next_lab, _tail)) = next.as_ref() {
             match expr {
@@ -337,6 +336,17 @@ impl CompileToAsm {
                 codes.append(&mut self.tail_to_asm(tail));
                 let cfg = Cfg(label, codes);
                 blocks.push(cfg);
+               // other code blocks
+                for lambda in lambdas {
+                    match lambda {
+                        Lambda (labl, box lambda_tail) => {
+                            let codes: Vec<Asm> = self.tail_to_asm(lambda_tail);
+                            let cfg = Cfg(labl, codes);
+                            blocks.push(cfg);
+                        }
+                        e => panic!("Expect Lambda, found {}", e),
+                    };
+                }
                 // the exit code
                 let label = String::from("_scheme_exit");
                 let codes = vec![
@@ -350,17 +360,6 @@ impl CompileToAsm {
                 ];
                 let cfg = Cfg(label, codes);
                 blocks.push(cfg);
-                // other code blocks
-                for lambda in lambdas {
-                    match lambda {
-                        Lambda (labl, box lambda_tail) => {
-                            let codes: Vec<Asm> = self.tail_to_asm(lambda_tail);
-                            let cfg = Cfg(labl, codes);
-                            blocks.push(cfg);
-                        }
-                        e => panic!("Expect Lambda, found {}", e),
-                    };
-                }
             }
             _ => panic!("Invalid Program {}", expr),
         }
