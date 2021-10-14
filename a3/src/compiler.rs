@@ -215,7 +215,67 @@ impl ExposeBasicBlocks {
     }
 }
 
-// diff from P523, we only handed the nested begin
+pub struct OptimizeJump {}
+impl OptimizeJump {
+    pub fn run(&self, expr: Expr) -> Expr {
+        match expr {
+            Letrec (lambdas, box tail) => {
+                let new_lambdas = self.optimize_jump(lambdas);
+                let new_tail = self.reduce_if2(tail);
+                return Letrec (new_lambdas, Box::new(new_tail));
+            }
+            e => panic!("Invalid Program {}", e),
+        } 
+    }
+    fn optimize_jump(&self, lambdas: Vec<Expr>) -> Vec<Expr> {
+        let mut new_lambdas = vec![];
+        let mut rest = lambdas.into_iter();
+        let mut head = rest.next();
+        let mut next = rest.next();
+        while let Some(Lambda(label, box tail)) = head {
+            let new_tail = self.reduce(tail, &next);
+            let new_lambda = Lambda (label, Box::new(new_tail));
+            new_lambdas.push(new_lambda);
+            head = next;
+            next = rest.next();
+        }
+        return new_lambdas;
+    }   
+    fn reduce(&self, expr: Expr, next: &Option<Expr>) -> Expr {
+        if let Some(Lambda (next_lab, _tail)) = next.as_ref() {
+            match expr {
+                Begin (exprs) => {
+                    let new_exprs: Vec<Expr>= exprs.into_iter().map(|e| self.reduce(e, next)).collect();
+                    return Begin (new_exprs);
+                }
+                If (relop, box Funcall (lab1), lab2) if &lab1 == next_lab => {
+                    let not_relop = Prim1 ("not".to_string(), relop);
+                    return If1 (Box::new(not_relop), lab2);
+                }
+                If (relop, lab1, box Funcall (lab2)) if &lab2 == next_lab => {
+                    return If1 (relop, lab1);
+                }
+                e => { return self.reduce_if2(e); }
+            };
+        }
+        return self.reduce_if2(expr);
+    }
+    fn reduce_if2(&self, expr: Expr) -> Expr {
+        match expr {
+            Begin (exprs) => {
+                let new_exprs: Vec<Expr> = exprs.into_iter().map(|e| self.reduce_if2(e)).collect();
+                return Begin (new_exprs);
+            }
+            If (relop, lab1, box lab2) => {
+                let if1 = If1 (relop, lab1);
+                return Begin (vec![if1, lab2]);
+            }
+            e => e,
+        }
+    }
+}
+
+
 pub struct FlattenProgram {}
 impl FlattenProgram {
     pub fn run(&self, expr: Expr) -> Expr {
@@ -255,10 +315,6 @@ impl FlattenProgram {
     }
 }
 
-pub struct OptimizeJump {}
-impl OptimizeJump {
-
-}
 
 pub struct CompileToAsm {}
 impl CompileToAsm {
@@ -436,6 +492,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formater("FinalizeLocation", &expr);
     let expr = ExposeBasicBlocks{}.run(expr);
     compile_formater("ExposeBasicBlocks", &expr);
+    let expr = OptimizeJump{}.run(expr);
+    compile_formater("OptimizeJump", &expr);
     let expr = FlattenProgram{}.run(expr);
     compile_formater("FlattenProgram", &expr);
     // let expr = CompileToAsm{}.run(expr);

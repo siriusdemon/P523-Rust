@@ -68,3 +68,20 @@ leaq
 + effect_helper 注意，effect 并不能作为一个 block 的结尾，所以它需要传入一个 tail，它的返回也应该是一个 tail。
 
 给自己预留点思考的时间吧！学而不思则罔。
+
++ reduce-two-branch-if
+
+引入新的语义 If1 来表示单支 if 语句。为什么不直接编译到 Asm 中的 Jmpif 呢？理由是，我们希望减轻 CompileToAsm 的负担，这样，当我们想换一个后端，比如 Riscv 的时候，相对就好写一些。
+
+从 P523 的 flatten-program 中剥离。
+
+situation1:
+
+(if (< rax 3) (l$1) (l$2))
+(if (< rax 3) (l$1))
+l$2 ...
+
+对汇编代码进行拓扑排序，减少不必要的 jmp，理应能够提升性能。但现在先不考虑这么多的优化吧！
+
+
+

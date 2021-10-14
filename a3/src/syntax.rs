@@ -10,6 +10,7 @@ pub enum Expr {
     Prim1(String, Box<Expr>),
     Prim2(String, Box<Expr>, Box<Expr>),
     If(Box<Expr>, Box<Expr>, Box<Expr>),
+    If1(Box<Expr>, Box<Expr>),
     Set(Box<Expr>, Box<Expr>),
     Symbol(String),
     Funcall(String),
@@ -51,6 +52,7 @@ impl fmt::Display for Expr {
             Prim1 (op, box e) => write!(f, "({} {})", op, e),
             Prim2 (op, box e1, box e2) => write!(f, "({} {} {})", op, e1, e2),
             If (box cond, box b1, box b2) => write!(f, "(if {} {} {})", cond, b1, b2),
+            If1 (box cond, box b) => write!(f, "(if {} {})", cond, b),
             Symbol (s) => write!(f, "{}", s),
             Funcall (name) => write!(f, "({})", name),
             Int64 (i) => write!(f, "{}", i),
@@ -74,6 +76,7 @@ pub enum Asm {
     Retq,
     Cfg(String, Vec<Asm>),
     Jmp(Box<Asm>),
+    Jmpif(String, Box<Asm>),
     Prog(Vec<Asm>),
     Push(Box<Asm>),
     Pop(Box<Asm>),
@@ -99,6 +102,8 @@ impl fmt::Display for Asm {
             Pop (box a) => write!(f, "\tpopq {}\n", a),
             Jmp (box Label(s)) => write!(f, "\tjmp {}\n", s),
             Jmp (box other) => write!(f, "\tjmp *{}\n", other),
+            Jmpif (cc, box Label(s)) => write!(f, "\tj{} {}\n", cc, s),
+            Jmpif (cc, other) => write!(f, "\tj{} *{}\n", cc, other),
             Cfg (labl, codes) => {
                 let mut codes_str = String::new();
                 for code in codes {
