@@ -101,7 +101,7 @@ fn compile3() {
 }
 
 #[test]
-fn compile4() {
+fn compile4_test_cmp() {
     let s = "
     (letrec ()
       (locate ([n.1 rdi])
@@ -120,7 +120,7 @@ fn compile4() {
 
 #[test]
 #[should_panic()]
-fn compile5() {
+fn compile5_test_cmp() {
     let s = "
     (letrec ()
       (locate ([n.1 rdi])
@@ -136,7 +136,8 @@ fn compile5() {
 }
 
 #[test]
-fn compile6() {
+#[should_panic()]
+fn compile6_test_cmp() {
     let s = "
     (letrec ()
       (locate ([n.1 rdi])
@@ -147,6 +148,23 @@ fn compile6() {
               (set! rax 2))
           (r15))))";
     let filename = "c6.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "2\n");
+}
+
+#[test]
+fn compile7_test_cmp() {
+    let s = "
+    (letrec ()
+      (locate ([n.1 rdi])
+        (begin 
+          (set! rax 10)
+          (if (< rax 2)
+              (set! rax 10)
+              (set! rax 2))
+          (r15))))";
+    let filename = "c7.s";
     compile(s, filename);
     let r = run_helper(filename);
     assert_eq!(r.as_str(), "2\n");

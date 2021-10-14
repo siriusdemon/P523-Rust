@@ -69,7 +69,7 @@ leaq
 
 给自己预留点思考的时间吧！学而不思则罔。
 
-+ reduce-two-branch-if
++ optimize-jump
 
 引入新的语义 If1 来表示单支 if 语句。为什么不直接编译到 Asm 中的 Jmpif 呢？理由是，我们希望减轻 CompileToAsm 的负担，这样，当我们想换一个后端，比如 Riscv 的时候，相对就好写一些。
 
@@ -92,8 +92,8 @@ locate 可以不存在，A2 的 PASS 能够通过，较 P523 更宽松。
 
 NOTE:
 
-这一节，if-test 会在 parse 的时候变成　if_test，因为 Gna Assembler 不允许 if-test 这样的标签。
+这一节，if-test 会在输出到文件的时候变成　if_test，因为 Gna Assembler 不允许 if-test 这样的标签。
 
-这一节的　Jump 还有可优化的地方。
+这一节的　Jump 还有可优化的地方。比如一些没有必要的空 block。
 
-且 cmpq 没有对常数进行检查。
+且 cmpq 没有对常数进行检查。但更好的做法应该是进行 constant-folding
