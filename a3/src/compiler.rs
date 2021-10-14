@@ -419,6 +419,22 @@ impl CompileToAsm {
         }
     }
     
+    fn relop_to_cc(&self, s: &str, not: bool) -> &str {
+        match s {
+            "=" if not => "ne",
+            "=" => "e",
+            ">" if not => "le",
+            ">" => "g",
+            "<" if not => "ge",
+            "<" => "l",
+            "<=" if not => "g",
+            "<=" => "le",
+            ">=" if not => "l",
+            ">=" => "ge",
+            op => panic!("Invalid relop {}", op),
+        }
+    }
+    
     fn expr_to_asm(&self, expr: Expr) -> Asm {
         match expr {
             Set (box Symbol(dst), box Symbol(src)) if self.is_label(&src) && self.is_reg(&dst) => {
@@ -448,6 +464,20 @@ impl CompileToAsm {
             Funcall (s) => {
                 let label = Label (s);
                 return Jmp (Box::new(label));
+            }
+            If1 (box Prim1(op, box Prim2(relop, box v1, box v2)), box Funcall (s)) if op.as_str() == "not" => {
+                let v1 = self.expr_to_asm_helper(v1);
+                let v2 = self.expr_to_asm_helper(v2);
+                let cond = self.op2("cmpq", v2, v1);
+                let jmp = Jmpif (self.relop_to_cc(&relop, true).to_string(), Box::new(Label (s)));
+                return Code (vec![cond, jmp]);
+            }
+            If1 (box Prim2(relop, box v1, box v2), box Funcall (s)) => {
+                let v1 = self.expr_to_asm_helper(v1);
+                let v2 = self.expr_to_asm_helper(v2);
+                let cond = self.op2("cmpq", v2, v1);
+                let jmp = Jmpif (self.relop_to_cc(&relop, false).to_string(), Box::new(Label (s)));
+                return Code (vec![cond, jmp]);
             }
             _ => panic!("Invaild Expr to Asm, {}", expr),
         }
@@ -496,8 +526,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formater("OptimizeJump", &expr);
     let expr = FlattenProgram{}.run(expr);
     compile_formater("FlattenProgram", &expr);
-    // let expr = CompileToAsm{}.run(expr);
-    // compile_formater("CompileToAsm", &expr);
-    // return GenerateAsm{}.run(expr, filename)
-    Ok(())
+    let expr = CompileToAsm{}.run(expr);
+    compile_formater("CompileToAsm", &expr);
+    return GenerateAsm{}.run(expr, filename)
+    // Ok(())
 }

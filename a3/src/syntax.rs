@@ -80,6 +80,7 @@ pub enum Asm {
     Prog(Vec<Asm>),
     Push(Box<Asm>),
     Pop(Box<Asm>),
+    Code(Vec<Asm>),
 }
 
 
@@ -115,6 +116,13 @@ impl fmt::Display for Asm {
                 let mut codes_str = String::new();
                 for cfg in cfgs {
                     codes_str.push_str( &format!("{}\n", cfg) );
+                }
+                return write!(f, "{}", codes_str);
+            }
+            Code (codes) => {
+                let mut codes_str = String::new();
+                for code in codes {
+                    codes_str.push_str( &format!("{}", code) );
                 }
                 return write!(f, "{}", codes_str);
             }
