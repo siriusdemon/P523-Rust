@@ -1,5 +1,8 @@
 use std::fmt;
 use std::collections::HashMap;
+use std::collections::HashSet;
+
+pub type ConflictGraph = HashMap<String, HashSet<String>>;
 
 #[derive(Debug)]
 pub enum Expr {
@@ -7,6 +10,7 @@ pub enum Expr {
     Locals(Vec<Expr>, Box<Expr>),
     Locate(HashMap<String, String>, Box<Expr>),
     Lambda(String, Box<Expr>),
+    RegisterConflict(ConflictGraph, Box<Expr>),
     Begin(Vec<Expr>),
     Prim1(String, Box<Expr>),
     Prim2(String, Box<Expr>, Box<Expr>),
@@ -48,6 +52,20 @@ impl fmt::Display for Expr {
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
                 let seqs_s = seqs_ref.join(" ");
                 let s = format!("(locate ({})\n {})", seqs_s, tail);
+                write!(f, "{}", s)
+            }
+            RegisterConflict (conflict_graph, box tail) => {
+                let mut cg = vec![];
+                for (v, conflicts) in conflict_graph {
+                    let seqs: Vec<String> = conflicts.iter().map(|c| format!("{}", c)).collect();
+                    let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+                    let seqs_s = seqs_ref.join(" ");
+                    let alist = format!("({} {})", v, seqs_s);
+                    cg.push(alist);
+                }
+                let seqs_ref: Vec<&str> = cg.iter().map(|s| s.as_ref()).collect();
+                let seqs_s = seqs_ref.join(" ");
+                let s = format!("(register-conflict ({}) {})", seqs_s, tail);
                 write!(f, "{}", s)
             }
             Begin ( exprs ) => {

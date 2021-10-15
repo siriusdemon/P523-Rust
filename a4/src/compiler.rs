@@ -1,13 +1,36 @@
 use std::io::Write;
 use std::fs::File;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::vec::IntoIter;
 
-use crate::syntax::{Expr, Asm};
+use crate::syntax::{Expr, Asm, ConflictGraph};
 use crate::parser::{Scanner, Parser};
 
 use Expr::*;
 use Asm::*;
+
+// ---------------------- geenral predicate --------------------------------
+fn is_uvar(sym: &str) -> bool {
+    let v: Vec<&str> = sym.split('.').collect();
+    v.len() == 2 && v[0].len() > 0 && v[1].len() > 0
+}
+
+fn is_reg(reg: &str) -> bool {
+    ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp", 
+     "r8" , "r9" , "r10", "r11", "r12", "r13", "r14", "r15" ].contains(&reg)
+}
+
+fn is_fv(s: &str) -> bool {
+    s.starts_with("fv")
+}
+
+fn is_label(sym: &str) -> bool {
+    let v: Vec<&str> = sym.split('$').collect();
+    v.len() == 2 && v[0].len() > 0 && v[1].len() > 0
+}
+
+
 
 pub struct ParseExpr {}
 impl ParseExpr {
@@ -17,6 +40,164 @@ impl ParseExpr {
         let parser = Parser::new(tokens);
         let expr = parser.parse();
         return expr;
+    }
+}
+
+pub struct UncoverRegisterConflict {}
+impl UncoverRegisterConflict {
+    pub fn run(&self, expr: Expr) -> Expr {
+        match expr {
+            Letrec (lambdas, box body) => {
+                let new_lambdas: Vec<Expr> = lambdas.into_iter()
+                                                .map(|e| self.helper(e))
+                                                .collect();
+                let new_body = self.helper(body);
+                return Letrec (new_lambdas, Box::new(new_body));
+            }
+            _ => panic!("Invalid Program {}", expr),
+        }
+    } 
+
+    fn helper(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (labl, box body) => Lambda (labl, Box::new(self.helper(body))),
+            Locals (uvars, box tail) => {
+                let new_tail = self.uncover_register_conflict(&uvars, tail);
+                return Locals (uvars, Box::new(new_tail));
+            }
+            e => e,
+        }
+    }
+
+    fn uncover_register_conflict(&self, uvars: &Vec<Expr>, tail: Expr) -> Expr {
+        let mut conflict_graph = ConflictGraph::new();
+        for uvar in uvars {
+            conflict_graph.insert(uvar.to_string(), HashSet::new());
+        }
+        return RegisterConflict (conflict_graph, Box::new(tail));
+    }
+
+    fn tail_liveset(&self, tail: &Expr, mut liveset: HashSet<String>, conflict_graph: &mut ConflictGraph) -> HashSet<String> {
+        match tail {
+            Funcall (labl, args) => {
+                for a in args {
+                    if let Symbol(s) = a { 
+                        liveset.insert(s.to_string()); 
+                    }
+                }
+                return liveset;
+            }
+            If (box Bool(true), box b1, _) => self.tail_liveset(b1, liveset, conflict_graph),
+            If (box Bool(false), _, box b2) => self.tail_liveset(b2, liveset, conflict_graph),
+            If (box pred, box b1, box b2) => {
+                let true_set = self.tail_liveset(b1, liveset.clone(), conflict_graph);
+                let false_set = self.tail_liveset(b2, liveset, conflict_graph);
+                return self.pred_liveset(pred, true_set, false_set, conflict_graph);
+            }
+            Begin (exprs) => {
+                let exprs_slice = exprs.as_slice();
+                let last = exprs.len() - 1;
+                liveset = self.tail_liveset(&exprs_slice[last], liveset, conflict_graph);
+                for i in 0..last {
+                    liveset = self.effect_liveset(&exprs_slice[i], liveset, conflict_graph); 
+                }
+                return liveset;
+            }
+            e => panic!("Invalid Tail {}", tail),
+        }   
+    }
+
+    fn pred_liveset(&self, pred: &Expr, true_liveset: HashSet<String>, fliveset: HashSet<String>, conflict_graph: &mut ConflictGraph) -> HashSet<String> {
+        match pred {
+            Bool (true) => true_liveset,
+            Bool (false) => fliveset,
+            If (box pred, box b1, box b2) => {
+                let new_true_liveset = self.pred_liveset(b1, true_liveset.clone(), fliveset.clone(), conflict_graph);
+                let new_fliveset = self.pred_liveset(b2, true_liveset, fliveset, conflict_graph);
+                return self.pred_liveset(pred, new_true_liveset, new_fliveset, conflict_graph);
+            }
+            Begin (exprs) => {
+                let exprs_slice = exprs.as_slice();
+                let last = exprs.len() - 1;
+                let mut liveset = self.pred_liveset(&exprs_slice[last], true_liveset, fliveset, conflict_graph);
+                for i in 0..last {
+                    liveset = self.effect_liveset(&exprs_slice[i], liveset, conflict_graph); 
+                }
+                return liveset;
+            }
+            Prim2 (relop, box v1, box v2 ) => {
+                let mut liveset: HashSet<_> = self.liveset_union(true_liveset, fliveset);
+                if let Symbol(s) = v1 { if is_uvar(s) {
+                    liveset.insert(s.to_string());    
+                }}
+                if let Symbol(s) = v2 { if is_uvar(s) {
+                    liveset.insert(s.to_string());
+                }}
+                return liveset;
+            }
+            e => panic!("Invalid Pred Expr {}", e),
+        }
+    }
+
+
+    fn effect_liveset(&self, effect: &Expr, mut liveset: HashSet<String>, conflict_graph: &mut ConflictGraph) -> HashSet<String> {
+        match effect {
+            &Nop => liveset,
+            If (box Bool(true), box b1, _) => self.effect_liveset(b1, liveset, conflict_graph),
+            If (box Bool(false), _, box b2) => self.effect_liveset(b2, liveset, conflict_graph),
+            If (box pred, box b1, box b2) => {
+                let true_liveset = self.effect_liveset(b1, liveset.clone(), conflict_graph);
+                let fliveset = self.effect_liveset(b2, liveset, conflict_graph);
+                let liveset = self.liveset_union(true_liveset, fliveset);
+                return self.effect_liveset(pred, liveset, conflict_graph);
+            }
+            Begin (exprs) => {
+                for e in exprs {
+                    liveset = self.effect_liveset(e, liveset, conflict_graph);
+                }
+                return liveset;
+            }
+            Set (box v1, box Prim2 (op, box _, box v2)) => {
+                if let Symbol(s) = v1 { 
+                    liveset.remove(s);
+                    self.record_conflicts(s, &liveset, conflict_graph);
+                    liveset.insert(s.to_string());
+                }
+                if let Symbol(s) = v2 { if is_uvar(s) || is_reg(s) {
+                    liveset.insert(s.to_string());
+                }}
+                return liveset;
+            }
+            Set (box v1, box v2) => {
+                if let Symbol(s) = v1 { 
+                    liveset.remove(s);
+                    self.record_conflicts(s, &liveset, conflict_graph);
+                }
+                if let Symbol(s) = v2 { if is_uvar(s) || is_reg(s) {
+                    liveset.insert(s.to_string());
+                }}
+                return liveset;
+            }
+            e => liveset,
+        }
+    }
+
+    fn liveset_union(&self,  set1: HashSet<String>, set2: HashSet<String>) -> HashSet<String> {
+        set1.union(&set2).into_iter().cloned().collect()
+    }
+
+    fn record_conflicts(&self, s: &str, liveset: &HashSet<String>, conflict_graph: &mut ConflictGraph) {
+        if is_reg(s) || is_uvar(s) {
+            for live in liveset.iter() {
+                if is_uvar(live) {
+                    let mut entry = conflict_graph.get_mut(live).unwrap();
+                    entry.insert(s.to_string());
+                    if is_uvar(s) {
+                        conflict_graph.get_mut(s).unwrap().insert(live.to_string());
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -388,27 +569,10 @@ impl CompileToAsm {
         }
     }
 
-    fn is_fv(&self, s: &str) -> bool {
-        s.starts_with("fv")
-    }
-
-    fn is_label(&self, sym: &str) -> bool {
-        let v: Vec<&str> = sym.split('$').collect();
-        v.len() == 2 && v[0].len() > 0 && v[1].len() > 0
-    }
-
     fn fv_to_deref(&self, fv :&str) -> Asm {
         let v :Vec<&str> = fv.split("fv").collect();
         let index :i64 = v[1].parse().unwrap();
         return Deref (Box::new(RBP), index * 8);
-    }
-
-    fn is_reg(&self, reg: &str) -> bool {
-        let registers = [
-            "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp", 
-            "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
-        ];
-        return registers.contains(&reg);
     }
 
     fn string_to_reg(&self, s: &str) -> Asm {
@@ -439,7 +603,7 @@ impl CompileToAsm {
     
     fn expr_to_asm(&self, expr: Expr) -> Asm {
         match expr {
-            Set (box Symbol(dst), box Symbol(src)) if self.is_label(&src) && self.is_reg(&dst) => {
+            Set (box Symbol(dst), box Symbol(src)) if is_label(&src) && is_reg(&dst) => {
                 let src = DerefLabel (Box::new(RIP), src);                
                 let dst = self.string_to_reg(&dst);
                 return self.op2("leaq", src, dst);
@@ -455,11 +619,11 @@ impl CompileToAsm {
                 let src = self.expr_to_asm_helper(src);
                 return self.op2("movq", src, dst);
             },
-            Funcall (s, _) if self.is_fv(&s) => {
+            Funcall (s, _) if is_fv(&s) => {
                 let deref = self.fv_to_deref(&s);
                 return Jmp (Box::new(deref));
             },
-            Funcall (s, _) if self.is_reg(&s) => {
+            Funcall (s, _) if is_reg(&s) => {
                 let reg = self.string_to_reg(&s);
                 return Jmp (Box::new(reg));
             },
@@ -488,8 +652,8 @@ impl CompileToAsm {
 
     fn expr_to_asm_helper(&self, expr: Expr) -> Asm {
         match expr {
-            Symbol (s) if self.is_reg(&s) => self.string_to_reg(&s),
-            Symbol (s) if self.is_fv(&s) => self.fv_to_deref(&s),
+            Symbol (s) if is_reg(&s) => self.string_to_reg(&s),
+            Symbol (s) if is_fv(&s) => self.fv_to_deref(&s),
             Symbol (s) => Label (s),
             Int64 (i) => Imm (i),
             e => panic!("Expect Atom Expr, found {}", e),
@@ -521,6 +685,8 @@ pub fn compile_formater<T: std::fmt::Display>(s: &str, expr: &T) {
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseExpr{}.run(s);
     compile_formater("ParseExpr", &expr);
+    let expr = UncoverRegisterConflict{}.run(expr);
+    compile_formater("UncoverRegisterCOnflict", &expr);
     // let expr = FinalizeLocations{}.run(expr);
     // compile_formater("FinalizeLocation", &expr);
     // let expr = ExposeBasicBlocks{}.run(expr);
