@@ -238,8 +238,17 @@ impl Parser {
 
     fn parse_funcall(&mut self) -> Expr {
         let labl = self.remove_top().unwrap();
-        let _right = self.remove_top();
-        return Expr::Funcall(labl.token);
+        let mut args = vec![];
+        while let Some(ref t) = self.top() {
+            if t.token.as_str() != ")" {
+                let expr = self.parse_expr();
+                args.push(expr);
+            } else {
+                let _right = self.remove_top();
+                return Expr::Funcall (labl.token, args);
+            }
+        } 
+        panic!("Parse Funcall, unexpected eof");
     }
 
     fn parse_set(&mut self) -> Expr {

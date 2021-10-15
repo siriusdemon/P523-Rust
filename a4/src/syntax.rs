@@ -14,7 +14,7 @@ pub enum Expr {
     If1(Box<Expr>, Box<Expr>),
     Set(Box<Expr>, Box<Expr>),
     Symbol(String),
-    Funcall(String),
+    Funcall(String, Vec<Expr>),
     Int64(i64),
     Bool(bool),
     Nop,
@@ -62,7 +62,12 @@ impl fmt::Display for Expr {
             If (box cond, box b1, box b2) => write!(f, "(if {} {} {})", cond, b1, b2),
             If1 (box cond, box b) => write!(f, "(if {} {})", cond, b),
             Symbol (s) => write!(f, "{}", s),
-            Funcall (name) => write!(f, "({})", name),
+            Funcall (name, args) => {
+                let seqs: Vec<String> = args.iter().map(|e| format!("{}", e)).collect();
+                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+                let seqs_s = seqs_ref.join(" ");
+                write!(f, "({} {})", name, seqs_s)
+            }
             Int64 (i) => write!(f, "{}", i),
             Bool (b) => write!(f, "({})", b),
             Nop => write!(f, "(nop)"),

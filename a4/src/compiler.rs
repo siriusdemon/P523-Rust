@@ -66,10 +66,10 @@ impl FinalizeLocations {
                 let new_e2 = self.replace_uvar(bindings, e2);
                 return Prim2 (op, Box::new(new_e1), Box::new(new_e2));
             },
-            Funcall (name) => {
+            Funcall (name, args) => {
                 match bindings.get(&name) {
-                    None => Funcall (name),
-                    Some (loc) => Funcall (loc.to_string()),
+                    None => Funcall (name, args),
+                    Some (loc) => Funcall (loc.to_string(), args),
                 }
             },
             Symbol (s) => {
@@ -148,8 +148,8 @@ impl ExposeBasicBlocks {
                 let new_pred = self.pred_helper(pred, lab1, lab2, new_lambdas);
                 return self.effects_helper(exprs, new_pred, new_lambdas);
             }
-            Bool (true) => Funcall (lab1.to_string()),
-            Bool (false) => Funcall (lab2.to_string()),
+            Bool (true) => Funcall (lab1.to_string(), vec![]),
+            Bool (false) => Funcall (lab2.to_string(), vec![]),
             If (box pred, box br1, box br2) => {
                 let new_lab1 = self.gensym();
                 let new_br1 = self.pred_helper(br1, lab1, lab2, new_lambdas);
@@ -161,7 +161,7 @@ impl ExposeBasicBlocks {
                 
                 return self.pred_helper(pred, &new_lab1, &new_lab2, new_lambdas);
             }
-            relop => If (Box::new(relop), Box::new(Funcall(lab1.to_string())), Box::new( Funcall(lab2.to_string()))),
+            relop => If (Box::new(relop), Box::new(Funcall(lab1.to_string(), vec![])), Box::new( Funcall(lab2.to_string(), vec![]))),
         }
     }
 
@@ -187,11 +187,11 @@ impl ExposeBasicBlocks {
                 self.add_binding(&lab_tail, tail, new_lambdas);
                 // first branch, jump to the join block
                 let lab1 = self.gensym();
-                let new_b1 = self.effect_helper(b1, Funcall (lab_tail.clone()), new_lambdas);
+                let new_b1 = self.effect_helper(b1, Funcall (lab_tail.clone(), vec![]), new_lambdas);
                 self.add_binding(&lab1, new_b1, new_lambdas);
                 // second branch, jump to the join block too
                 let lab2 = self.gensym();
-                let new_b2 = self.effect_helper(b2, Funcall (lab_tail), new_lambdas);
+                let new_b2 = self.effect_helper(b2, Funcall (lab_tail, vec![]), new_lambdas);
                 self.add_binding(&lab2, new_b2, new_lambdas);
                 // since a single expr seq break into several blocks, an effect turn into a tail.
                 return self.pred_helper(pred, &lab1, &lab2, new_lambdas);
@@ -247,14 +247,14 @@ impl OptimizeJump {
                     let new_exprs: Vec<Expr>= exprs.into_iter().map(|e| self.reduce(e, next)).collect();
                     return Begin (new_exprs);
                 }
-                If (relop, box Funcall (lab1), lab2) if &lab1 == next_lab => {
+                If (relop, box Funcall (lab1, _), lab2) if &lab1 == next_lab => {
                     let not_relop = Prim1 ("not".to_string(), relop);
                     return If1 (Box::new(not_relop), lab2);
                 }
-                If (relop, lab1, box Funcall (lab2)) if &lab2 == next_lab => {
+                If (relop, lab1, box Funcall (lab2, _)) if &lab2 == next_lab => {
                     return If1 (relop, lab1);
                 }
-                Funcall (lab) if &lab == next_lab => {
+                Funcall (lab, _) if &lab == next_lab => {
                     return Nop;
                 }
                 e => { return self.reduce_if2(e); }
@@ -455,26 +455,26 @@ impl CompileToAsm {
                 let src = self.expr_to_asm_helper(src);
                 return self.op2("movq", src, dst);
             },
-            Funcall (s) if self.is_fv(&s) => {
+            Funcall (s, _) if self.is_fv(&s) => {
                 let deref = self.fv_to_deref(&s);
                 return Jmp (Box::new(deref));
             },
-            Funcall (s) if self.is_reg(&s) => {
+            Funcall (s, _) if self.is_reg(&s) => {
                 let reg = self.string_to_reg(&s);
                 return Jmp (Box::new(reg));
             },
-            Funcall (s) => {
+            Funcall (s, _) => {
                 let label = Label (s);
                 return Jmp (Box::new(label));
             }
-            If1 (box Prim1(op, box Prim2(relop, box v1, box v2)), box Funcall (s)) if op.as_str() == "not" => {
+            If1 (box Prim1(op, box Prim2(relop, box v1, box v2)), box Funcall (s, _)) if op.as_str() == "not" => {
                 let v1 = self.expr_to_asm_helper(v1);
                 let v2 = self.expr_to_asm_helper(v2);
                 let cond = self.op2("cmpq", v2, v1);
                 let jmp = Jmpif (self.relop_to_cc(&relop, true).to_string(), Box::new(Label (s)));
                 return Code (vec![cond, jmp]);
             }
-            If1 (box Prim2(relop, box v1, box v2), box Funcall (s)) => {
+            If1 (box Prim2(relop, box v1, box v2), box Funcall (s, _)) => {
                 let v1 = self.expr_to_asm_helper(v1);
                 let v2 = self.expr_to_asm_helper(v2);
                 let cond = self.op2("cmpq", v2, v1);

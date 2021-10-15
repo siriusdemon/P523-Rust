@@ -97,3 +97,8 @@ NOTE:
 这一节的　Jump 还有可优化的地方。比如一些没有必要的空 block。
 
 且 cmpq 没有对常数进行检查。但更好的做法应该是进行 constant-folding
+
+
+### week4
+
+parse 过于简单，只是把 locate 转换成 locals，非常适合作为练习。到后面，也许 parse 会越来越简单，因为更多的语法变成了临时语法。
