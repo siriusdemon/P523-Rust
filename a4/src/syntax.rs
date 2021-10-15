@@ -4,6 +4,7 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub enum Expr {
     Letrec(Vec<Expr>, Box<Expr>),
+    Locals(Vec<Expr>, Box<Expr>),
     Locate(HashMap<String, String>, Box<Expr>),
     Lambda(String, Box<Expr>),
     Begin(Vec<Expr>),
@@ -25,12 +26,19 @@ impl fmt::Display for Expr {
         use Expr::*;
         match self {
             Letrec (lambdas, box body) => {
-                let seqs: Vec<String> = lambdas.into_iter().map(|e| format!("{}", e)).collect();
+                let seqs: Vec<String> = lambdas.iter().map(|e| format!("{}", e)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
                 let seqs_s = seqs_ref.join("\n");
                 let s = format!("(letrec ({}) \n  {})", seqs_s, body);
                 write!(f, "{}", s)
             },
+            Locals (uvars, box tail) => {
+                let seqs: Vec<String> = uvars.iter().map(|e| format!("{}", e)).collect();
+                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+                let seqs_s = seqs_ref.join(" ");
+                let s = format!("(locals ({})\n  {})", seqs_s, tail);
+                write!(f, "{}", s)
+            }
             Lambda (label, box body) => {
                 let s = format!("({} (lambda () {}))", label, body);
                 write!(f, "{}", s)
@@ -43,7 +51,7 @@ impl fmt::Display for Expr {
                 write!(f, "{}", s)
             }
             Begin ( exprs ) => {
-                let seqs: Vec<String> = exprs.into_iter().map(|e| format!("  {}", e)).collect();
+                let seqs: Vec<String> = exprs.iter().map(|e| format!("  {}", e)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
                 let seqs_s = seqs_ref.join("\n");
                 write!(f, "(begin \n{})", seqs_s)

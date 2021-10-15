@@ -145,7 +145,7 @@ impl Parser {
         let top = self.top();
         match top.unwrap().token.as_str() {
             "letrec" => self.parse_letrec(),
-            "locate" => self.parse_locate(),
+            "locals" => self.parse_locals(),
             "begin" => self.parse_begin(),
             "set!" => self.parse_set(),
             "if" => self.parse_if(),
@@ -175,31 +175,24 @@ impl Parser {
         panic!("Parse letrec, unexpected eof");
     }
 
-    fn parse_locate(&mut self) -> Expr {
-        let _locate = self.remove_top();
-        let _binding_left = self.remove_top();
-        let mut bindings = HashMap::new();
+    fn parse_locals(&mut self) -> Expr {
+        let _locals = self.remove_top();
+        let _uvar_left = self.remove_top();
+        let mut uvars = vec![];
         while let Some(ref t) = self.top() {
             if t.token.as_str() != ")" {
-                let (key, val) = self.parse_binding();
-                bindings.insert(key, val);
+                let uvar = self.parse_expr();
+                uvars.push(uvar);
             } else {
-                let _binding_right = self.remove_top();
+                let _uvar_right = self.remove_top();
                 let tail = self.parse_expr();
                 let _right = self.remove_top();
-                return Expr::Locate(bindings, Box::new(tail));
+                return Expr::Locals (uvars, Box::new(tail));
             }
         }
         panic!("Parse locate, unexpected eof");
     }
 
-    fn parse_binding(&mut self) -> (String, String) {
-        let _left = self.remove_top();
-        let var = self.remove_top().unwrap().token;
-        let val = self.remove_top().unwrap().token;
-        let _right = self.remove_top();
-        return (var, val);
-    }
 
     fn parse_begin(&mut self) -> Expr {
         let _begin = self.remove_top();

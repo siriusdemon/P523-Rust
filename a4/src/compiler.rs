@@ -521,16 +521,16 @@ pub fn compile_formater<T: std::fmt::Display>(s: &str, expr: &T) {
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseExpr{}.run(s);
     compile_formater("ParseExpr", &expr);
-    let expr = FinalizeLocations{}.run(expr);
-    compile_formater("FinalizeLocation", &expr);
-    let expr = ExposeBasicBlocks{}.run(expr);
-    compile_formater("ExposeBasicBlocks", &expr);
-    let expr = OptimizeJump{}.run(expr);
-    compile_formater("OptimizeJump", &expr);
-    let expr = FlattenProgram{}.run(expr);
-    compile_formater("FlattenProgram", &expr);
-    let expr = CompileToAsm{}.run(expr);
-    compile_formater("CompileToAsm", &expr);
-    return GenerateAsm{}.run(expr, filename)
-    // Ok(())
+    // let expr = FinalizeLocations{}.run(expr);
+    // compile_formater("FinalizeLocation", &expr);
+    // let expr = ExposeBasicBlocks{}.run(expr);
+    // compile_formater("ExposeBasicBlocks", &expr);
+    // let expr = OptimizeJump{}.run(expr);
+    // compile_formater("OptimizeJump", &expr);
+    // let expr = FlattenProgram{}.run(expr);
+    // compile_formater("FlattenProgram", &expr);
+    // let expr = CompileToAsm{}.run(expr);
+    // compile_formater("CompileToAsm", &expr);
+    // return GenerateAsm{}.run(expr, filename)
+    Ok(())
 }
