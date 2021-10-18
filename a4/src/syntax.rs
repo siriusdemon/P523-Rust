@@ -60,7 +60,7 @@ impl fmt::Display for Expr {
                     let seqs: Vec<String> = conflicts.iter().map(|c| format!("{}", c)).collect();
                     let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
                     let seqs_s = seqs_ref.join(" ");
-                    let alist = format!("({} {})", v, seqs_s);
+                    let alist = format!("({} {{{}}})", v, seqs_s);
                     cg.push(alist);
                 }
                 let seqs_ref: Vec<&str> = cg.iter().map(|s| s.as_ref()).collect();

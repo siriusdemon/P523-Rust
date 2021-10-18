@@ -11,14 +11,17 @@ use Expr::*;
 use Asm::*;
 
 // ---------------------- geenral predicate --------------------------------
+const N_REG :usize = 15;
+const registers :[&str; N_REG] = ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+                                  "r8" , "r9" , "r10", "r11", "r12", "r13", "r14", "r15" ];
+
 fn is_uvar(sym: &str) -> bool {
     let v: Vec<&str> = sym.split('.').collect();
     v.len() == 2 && v[0].len() > 0 && v[1].len() > 0
 }
 
 fn is_reg(reg: &str) -> bool {
-    ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp", 
-     "r8" , "r9" , "r10", "r11", "r12", "r13", "r14", "r15" ].contains(&reg)
+    registers.contains(&reg)
 }
 
 fn is_fv(s: &str) -> bool {
@@ -74,6 +77,7 @@ impl UncoverRegisterConflict {
         for uvar in uvars {
             conflict_graph.insert(uvar.to_string(), HashSet::new());
         }
+        let _liveset = self.tail_liveset(&tail, HashSet::new(), &mut conflict_graph);
         return RegisterConflict (conflict_graph, Box::new(tail));
     }
 
@@ -85,6 +89,7 @@ impl UncoverRegisterConflict {
                         liveset.insert(s.to_string()); 
                     }
                 }
+                liveset.insert(labl.to_string());
                 return liveset;
             }
             If (box Bool(true), box b1, _) => self.tail_liveset(b1, liveset, conflict_graph),
@@ -98,7 +103,7 @@ impl UncoverRegisterConflict {
                 let exprs_slice = exprs.as_slice();
                 let last = exprs.len() - 1;
                 liveset = self.tail_liveset(&exprs_slice[last], liveset, conflict_graph);
-                for i in 0..last {
+                for i in (0..last).rev() {
                     liveset = self.effect_liveset(&exprs_slice[i], liveset, conflict_graph); 
                 }
                 return liveset;
@@ -157,21 +162,31 @@ impl UncoverRegisterConflict {
                 }
                 return liveset;
             }
-            Set (box v1, box Prim2 (op, box _, box v2)) => {
+            Set (box v1, box Prim2 (op, box v2, box v3)) => {
                 if let Symbol(s) = v1 { 
                     liveset.remove(s);
-                    self.record_conflicts(s, &liveset, conflict_graph);
-                    liveset.insert(s.to_string());
+                    self.record_conflicts(s, "", &liveset, conflict_graph);
                 }
                 if let Symbol(s) = v2 { if is_uvar(s) || is_reg(s) {
                     liveset.insert(s.to_string());
                 }}
+                if let Symbol(s) = v3 { if is_uvar(s) || is_reg(s) {
+                    liveset.insert(s.to_string());
+                }}
+                return liveset;
+            }
+            Set (box Symbol(s1), box Symbol(s2)) => {
+                liveset.remove(s1);
+                self.record_conflicts(s1, s2, &liveset, conflict_graph);
+                if is_uvar(s2) || is_reg(s2) {
+                    liveset.insert(s2.to_string());
+                }
                 return liveset;
             }
             Set (box v1, box v2) => {
                 if let Symbol(s) = v1 { 
                     liveset.remove(s);
-                    self.record_conflicts(s, &liveset, conflict_graph);
+                    self.record_conflicts(s, "", &liveset, conflict_graph);
                 }
                 if let Symbol(s) = v2 { if is_uvar(s) || is_reg(s) {
                     liveset.insert(s.to_string());
@@ -186,21 +201,123 @@ impl UncoverRegisterConflict {
         set1.union(&set2).into_iter().cloned().collect()
     }
 
-    fn record_conflicts(&self, s: &str, liveset: &HashSet<String>, conflict_graph: &mut ConflictGraph) {
-        if is_reg(s) || is_uvar(s) {
-            for live in liveset.iter() {
-                if is_uvar(live) {
-                    let mut entry = conflict_graph.get_mut(live).unwrap();
-                    entry.insert(s.to_string());
-                    if is_uvar(s) {
-                        conflict_graph.get_mut(s).unwrap().insert(live.to_string());
-                    }
+    fn record_conflicts(&self, s: &str, mov: &str, liveset: &HashSet<String>, conflict_graph: &mut ConflictGraph) {
+        if !(is_reg(s) || is_uvar(s)) { return; }
+        // every symbol has an entry.
+        for live in liveset.iter() {
+            if live != mov {
+                if let Some(live_entry) = conflict_graph.get_mut(live) {
+                    live_entry.insert(s.to_string());
+                }
+                if let Some(s_entry) = conflict_graph.get_mut(s) {
+                    s_entry.insert(live.to_string());
                 }
             }
         }
     }
 }
 
+
+pub struct AssignRegister {}
+impl AssignRegister {
+    pub fn run(&self, expr: Expr) -> Expr {
+        match expr {
+            Letrec (lambdas, box body) => {
+                let new_lambdas = lambdas.into_iter().map(|e| self.helper(e)).collect();
+                let new_body = self.helper(body);
+                return Letrec (new_lambdas, Box::new(new_body));
+            }
+            _ => unreachable!(),
+        }
+    }
+    fn helper(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (label, box body) => Lambda (label, Box::new(self.helper(body))),
+            Locals (_, box RegisterConflict (conflict_graph, box tail) ) =>  self.assign_registers(conflict_graph, tail),
+            _ => unreachable!(),
+        }
+    }
+    fn assign_registers(&self, mut conflict_graph: ConflictGraph, tail: Expr) -> Expr {
+        let mut assigned = HashMap::new();
+        let mut available = registers.iter().map(|reg| reg.to_string()).collect();
+        self.assign_helper(&mut conflict_graph, &mut assigned, &mut available);
+        return Locate (assigned, Box::new(tail));
+    }
+
+    fn assign_helper(&self, conflict_graph: &mut ConflictGraph, assigned: &mut HashMap<String, String>, available: &mut HashSet<String>) {
+        if conflict_graph.len() == 0 { return; }
+        let v = self.proposal_var(conflict_graph);
+        let conflicts = conflict_graph.remove(&v).unwrap();
+        // remove the picked variable from the conflict graph
+        for set in conflict_graph.values_mut() {
+            set.remove(&v);
+        }
+        // assign other variable firstlu
+        self.assign_helper(conflict_graph, assigned, available);
+        // assign the picked variables
+        let reg = self.find_available(conflicts, available);
+        available.remove(&reg);
+        assigned.insert(v, reg);
+    }
+
+    // find the low-degree variable
+    fn proposal_var(&self, conflict_graph: &ConflictGraph) -> String {
+        let mut v = "";
+        let mut degree = usize::max_value();
+        for (k, list) in conflict_graph {
+            if list.len() < degree {
+                v = k;
+                degree = list.len();
+            }
+        }
+        return v.to_string();
+    }
+
+    fn find_available(&self, conflict: HashSet<String>, available: &HashSet<String>) -> String {
+        for reg in available.difference(&conflict) {
+            return reg.to_string();
+        }
+        panic!("Unable to find a available register!");
+    }
+}
+
+
+pub struct DiscardCallLive {}
+impl DiscardCallLive {
+    pub fn run(&self, expr: Expr) -> Expr {
+        if let Letrec (lambdas, box body) = expr {
+            let new_lambdas = lambdas.into_iter().map(|e| self.helper(e)).collect();
+            let new_body = self.helper(body);
+            return Letrec (new_lambdas, Box::new(new_body));
+        }
+        unreachable!();
+    }
+
+    fn helper(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (label, box body) => Lambda (label, Box::new(self.helper(body))),
+            Locate (bindings,  box tail)  =>  Locate (bindings, Box::new(self.discard_call_live(tail))),
+            _ => unreachable!(),
+        }
+    }
+
+    fn discard_call_live(&self, tail: Expr) -> Expr {
+        match tail {
+            Funcall (label, _args) => Funcall (label, vec![]),
+            If (pred, box b1, box b2) => {
+                let new_b1 = self.discard_call_live(b1);
+                let new_b2 = self.discard_call_live(b2);
+                return If (pred, Box::new(new_b1), Box::new(new_b2));
+            }
+            Begin (mut exprs) => {
+                let new_tail = self.discard_call_live(exprs.pop().unwrap());
+                exprs.push(new_tail);  
+                return Begin (exprs);
+            }
+            e => panic!("Invalid tail {}", e),
+        }
+    }
+}
 
 pub struct FinalizeLocations {}
 impl FinalizeLocations {
@@ -269,7 +386,7 @@ pub struct ExposeBasicBlocks {}
 impl ExposeBasicBlocks {
     pub fn run(&self, expr: Expr) -> Expr {
         match expr {
-            Letrec (mut lambdas, box tail) => {
+            Letrec (lambdas, box tail) => {
                 let mut new_lambdas = vec![];
                 let (mut lambdas, new_tail) = self.expose_block(lambdas, tail, &mut new_lambdas);
                 // since we process the later first, reverse to keep the original order
@@ -687,16 +804,19 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formater("ParseExpr", &expr);
     let expr = UncoverRegisterConflict{}.run(expr);
     compile_formater("UncoverRegisterCOnflict", &expr);
-    // let expr = FinalizeLocations{}.run(expr);
-    // compile_formater("FinalizeLocation", &expr);
-    // let expr = ExposeBasicBlocks{}.run(expr);
-    // compile_formater("ExposeBasicBlocks", &expr);
-    // let expr = OptimizeJump{}.run(expr);
-    // compile_formater("OptimizeJump", &expr);
-    // let expr = FlattenProgram{}.run(expr);
-    // compile_formater("FlattenProgram", &expr);
-    // let expr = CompileToAsm{}.run(expr);
-    // compile_formater("CompileToAsm", &expr);
-    // return GenerateAsm{}.run(expr, filename)
-    Ok(())
+    let expr = AssignRegister{}.run(expr);
+    compile_formater("AssignRegister", &expr);
+    let expr = DiscardCallLive{}.run(expr);
+    compile_formater("DiscardCallLive", &expr);
+    let expr = FinalizeLocations{}.run(expr);
+    compile_formater("Finalizelocations", &expr);
+    let expr = ExposeBasicBlocks{}.run(expr);
+    compile_formater("ExposeBasicBlocks", &expr);
+    let expr = OptimizeJump{}.run(expr);
+    compile_formater("OptimizeJump", &expr);
+    let expr = FlattenProgram{}.run(expr);
+    compile_formater("FlattenProgram", &expr);
+    let expr = CompileToAsm{}.run(expr);
+    compile_formater("CompileToAsm", &expr);
+    return GenerateAsm{}.run(expr, filename)
 }
