@@ -80,11 +80,13 @@ pub trait UncoverConflict {
         match tail {
             Funcall (labl, args) => {
                 for a in args {
-                    if let Symbol(s) = a { 
+                    if let Symbol(s) = a { if self.type_verify(s) {
                         liveset.insert(s.to_string()); 
-                    }
+                    }}
                 }
-                liveset.insert(labl.to_string());
+                if self.type_verify(labl) {
+                    liveset.insert(labl.to_string());
+                }
                 return liveset;
             }
             If (box Bool(true), box b1, _) => self.tail_liveset(b1, liveset, conflict_graph),
@@ -831,21 +833,24 @@ pub fn compile_formater<T: std::fmt::Display>(s: &str, expr: &T) {
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseExpr{}.run(s);
     compile_formater("ParseExpr", &expr);
-    let expr = UncoverRegisterConflict{}.run(expr);
-    compile_formater("UncoverRegisterConflict", &expr);
-    let expr = AssignRegister{}.run(expr);
-    compile_formater("AssignRegister", &expr);
-    let expr = DiscardCallLive{}.run(expr);
-    compile_formater("DiscardCallLive", &expr);
-    let expr = FinalizeLocations{}.run(expr);
-    compile_formater("Finalizelocations", &expr);
-    let expr = ExposeBasicBlocks{}.run(expr);
-    compile_formater("ExposeBasicBlocks", &expr);
-    let expr = OptimizeJump{}.run(expr);
-    compile_formater("OptimizeJump", &expr);
-    let expr = FlattenProgram{}.run(expr);
-    compile_formater("FlattenProgram", &expr);
-    let expr = CompileToAsm{}.run(expr);
-    compile_formater("CompileToAsm", &expr);
-    return GenerateAsm{}.run(expr, filename)
+    let expr = UncoverFrameConflict{}.run(expr);
+    compile_formater("UncoverFrameConflict", &expr);
+    // let expr = UncoverRegisterConflict{}.run(expr);
+    // compile_formater("UncoverRegisterConflict", &expr);
+    // let expr = AssignRegister{}.run(expr);
+    // compile_formater("AssignRegister", &expr);
+    // let expr = DiscardCallLive{}.run(expr);
+    // compile_formater("DiscardCallLive", &expr);
+    // let expr = FinalizeLocations{}.run(expr);
+    // compile_formater("Finalizelocations", &expr);
+    // let expr = ExposeBasicBlocks{}.run(expr);
+    // compile_formater("ExposeBasicBlocks", &expr);
+    // let expr = OptimizeJump{}.run(expr);
+    // compile_formater("OptimizeJump", &expr);
+    // let expr = FlattenProgram{}.run(expr);
+    // compile_formater("FlattenProgram", &expr);
+    // let expr = CompileToAsm{}.run(expr);
+    // compile_formater("CompileToAsm", &expr);
+    // return GenerateAsm{}.run(expr, filename)
+    Ok(())
 }
