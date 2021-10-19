@@ -22,6 +22,7 @@ fn conflict_graph_formatter(form: &str, conflict_graph: &ConflictGraph, tail: &E
 pub enum Expr {
     Letrec(Vec<Expr>, Box<Expr>),
     Locals(Vec<Expr>, Box<Expr>),
+    Ulocals(Vec<Expr>, Box<Expr>),
     Locate(HashMap<String, String>, Box<Expr>),
     Lambda(String, Box<Expr>),
     RegisterConflict(ConflictGraph, Box<Expr>),
@@ -48,7 +49,7 @@ impl fmt::Display for Expr {
                 let seqs: Vec<String> = lambdas.iter().map(|e| format!("{}", e)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
                 let seqs_s = seqs_ref.join("\n");
-                let s = format!("(letrec ({}) \n  {})", seqs_s, body);
+                let s = format!("(letrec ({})\n  {})", seqs_s, body);
                 write!(f, "{}", s)
             },
             Locals (uvars, box tail) => {
@@ -56,6 +57,13 @@ impl fmt::Display for Expr {
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
                 let seqs_s = seqs_ref.join(" ");
                 let s = format!("(locals ({})\n  {})", seqs_s, tail);
+                write!(f, "{}", s)
+            }
+            Ulocals (unspills, box tail) => {
+                let seqs: Vec<String> = unspills.iter().map(|e| format!("{}", e)).collect();
+                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+                let seqs_s = seqs_ref.join(" ");
+                let s = format!("(ulocals ({})\n  {})", seqs_s, tail);
                 write!(f, "{}", s)
             }
             Lambda (label, box body) => {

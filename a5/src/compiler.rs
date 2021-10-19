@@ -231,6 +231,33 @@ impl UncoverConflict for UncoverFrameConflict {
     }
 }
 
+pub struct IntroduceAllocationForm {}
+impl IntroduceAllocationForm {
+    fn run(&self, expr: Expr) -> Expr {
+        match expr {
+            Letrec (lambdas, box body) => {
+                let new_lambdas: Vec<Expr> = lambdas.into_iter()
+                                                .map(|e| self.helper(e))
+                                                .collect();
+                let new_body = self.helper(body);
+                return Letrec (new_lambdas, Box::new(new_body));
+            }
+            _ => panic!("Invalid Program {}", expr),
+        }
+    } 
+
+    fn helper(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (labl, box body) => Lambda (labl, Box::new(self.helper(body))),
+            Locals (uvars, box tail) => {
+                let new_tail = Ulocals (vec![], Box::new(Locate (HashMap::new(), Box::new(tail))));
+                return Locals (uvars, Box::new(new_tail));
+            }
+            e => e,
+        }
+    }
+}
+
 pub struct UncoverRegisterConflict {}
 impl UncoverConflict for UncoverRegisterConflict {
     fn type_verify(&self, s: &str) -> bool {
@@ -830,11 +857,34 @@ pub fn compile_formater<T: std::fmt::Display>(s: &str, expr: &T) {
     println!("----------------------------\n");
 }
 
+
+pub fn everybody_home(expr: &Expr) -> bool {
+    fn body_home(expr: &Expr) -> bool {
+        match expr {
+            Locate (bindings, tail) => true,
+            _ => false,
+        }
+    }
+    fn lambda_home(expr: &Expr) -> bool {
+        match expr {
+            Lambda (labl, box body) => body_home(body),
+            e => panic!("Invalid lambda expression {}", e),
+        }
+    }
+    if let Letrec (lambdas, box body) = expr {
+        return lambdas.iter().all(|e| lambda_home(e)) && body_home(body)
+    }
+    panic!("Invalid Program {}", expr);
+}
+
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseExpr{}.run(s);
     compile_formater("ParseExpr", &expr);
     let expr = UncoverFrameConflict{}.run(expr);
     compile_formater("UncoverFrameConflict", &expr);
+    let expr = IntroduceAllocationForm{}.run(expr);
+    compile_formater("IntroduceAllocationForm", &expr);
+
     // let expr = UncoverRegisterConflict{}.run(expr);
     // compile_formater("UncoverRegisterConflict", &expr);
     // let expr = AssignRegister{}.run(expr);

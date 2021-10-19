@@ -9,6 +9,9 @@ The P523 PDF files spreaded around the Internet is the main materials you have t
 
 I am going to explain the homework framework a little bit when I finish.
 
+
+Note: As you proceeds, the framework also evolves. Some patterns appear and certain code are modified to abstract them. But the whole framework is still  understandable. So this course will be an adventure! Enjoy it!
+
 ----------------------------------------------------
 
 ### Week1
