@@ -1,4 +1,5 @@
-P523-Rust
+## P523-Rust
+
 
 P523 is a classic compiler course taught by R. Kent Dybvig. This repo implements the course using Rust, provides full documentation and material to help you master P523.
 
