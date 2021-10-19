@@ -6,8 +6,8 @@ use crate::parser::{Scanner, Parser};
 use Expr::*;
 use Asm::*;
 
-pub struct ParsePass {}
-impl ParsePass {
+pub struct ParseExpr {}
+impl ParseExpr {
     pub fn run(&self, expr: &str) -> Expr {
         let scanner = Scanner::new(expr);
         let tokens = scanner.scan();
@@ -17,8 +17,8 @@ impl ParsePass {
     }
 }
 
-pub struct CompileToAsmPass {}
-impl CompileToAsmPass {
+pub struct CompileToAsm {}
+impl CompileToAsm {
     pub fn run(&self, expr: Expr) -> Asm {
         let label = String::from("_scheme_entry");
         let mut codes = vec![];
@@ -84,8 +84,8 @@ impl CompileToAsmPass {
 }
 
 
-pub struct GenerateAsmPass {}
-impl GenerateAsmPass {
+pub struct GenerateAsm {}
+impl GenerateAsm {
     pub fn run(&self, code: Asm, filename: &str) -> std::io::Result<()> {
         let mut file = File::create(filename)?;
         file.write(b".globl _scheme_entry\n")?;
@@ -111,9 +111,9 @@ impl GenerateAsmPass {
 
 
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
-    let expr = ParsePass{}.run(s);
+    let expr = ParseExpr{}.run(s);
     println!("{:?}", expr);
-    let asms = CompileToAsmPass{}.run(expr);
+    let asms = CompileToAsm{}.run(expr);
     println!("{}", asms);
-    GenerateAsmPass{}.run(asms, filename)
+    GenerateAsm{}.run(asms, filename)
 }
