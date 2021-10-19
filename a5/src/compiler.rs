@@ -46,9 +46,12 @@ impl ParseExpr {
     }
 }
 
-pub struct UncoverRegisterConflict {}
-impl UncoverRegisterConflict {
-    pub fn run(&self, expr: Expr) -> Expr {
+
+
+pub trait UncoverConflict {
+    fn type_verify(&self, s: &str) -> bool;
+    fn uncover_conflict(&self, uvars: &Vec<Expr>, tail: Expr) -> Expr;
+    fn run(&self, expr: Expr) -> Expr {
         match expr {
             Letrec (lambdas, box body) => {
                 let new_lambdas: Vec<Expr> = lambdas.into_iter()
@@ -65,21 +68,13 @@ impl UncoverRegisterConflict {
         match expr {
             Lambda (labl, box body) => Lambda (labl, Box::new(self.helper(body))),
             Locals (uvars, box tail) => {
-                let new_tail = self.uncover_register_conflict(&uvars, tail);
+                let new_tail = self.uncover_conflict(&uvars, tail);
                 return Locals (uvars, Box::new(new_tail));
             }
             e => e,
         }
     }
 
-    fn uncover_register_conflict(&self, uvars: &Vec<Expr>, tail: Expr) -> Expr {
-        let mut conflict_graph = ConflictGraph::new();
-        for uvar in uvars {
-            conflict_graph.insert(uvar.to_string(), HashSet::new());
-        }
-        let _liveset = self.tail_liveset(&tail, HashSet::new(), &mut conflict_graph);
-        return RegisterConflict (conflict_graph, Box::new(tail));
-    }
 
     fn tail_liveset(&self, tail: &Expr, mut liveset: HashSet<String>, conflict_graph: &mut ConflictGraph) -> HashSet<String> {
         match tail {
@@ -167,10 +162,10 @@ impl UncoverRegisterConflict {
                     liveset.remove(s);
                     self.record_conflicts(s, "", &liveset, conflict_graph);
                 }
-                if let Symbol(s) = v2 { if is_uvar(s) || is_reg(s) {
+                if let Symbol(s) = v2 { if is_uvar(s) || self.type_verify(s) {
                     liveset.insert(s.to_string());
                 }}
-                if let Symbol(s) = v3 { if is_uvar(s) || is_reg(s) {
+                if let Symbol(s) = v3 { if is_uvar(s) || self.type_verify(s) {
                     liveset.insert(s.to_string());
                 }}
                 return liveset;
@@ -178,7 +173,7 @@ impl UncoverRegisterConflict {
             Set (box Symbol(s1), box Symbol(s2)) => {
                 liveset.remove(s1);
                 self.record_conflicts(s1, s2, &liveset, conflict_graph);
-                if is_uvar(s2) || is_reg(s2) {
+                if is_uvar(s2) || self.type_verify(s2) {
                     liveset.insert(s2.to_string());
                 }
                 return liveset;
@@ -188,7 +183,7 @@ impl UncoverRegisterConflict {
                     liveset.remove(s);
                     self.record_conflicts(s, "", &liveset, conflict_graph);
                 }
-                if let Symbol(s) = v2 { if is_uvar(s) || is_reg(s) {
+                if let Symbol(s) = v2 { if is_uvar(s) || self.type_verify(s) {
                     liveset.insert(s.to_string());
                 }}
                 return liveset;
@@ -202,7 +197,7 @@ impl UncoverRegisterConflict {
     }
 
     fn record_conflicts(&self, s: &str, mov: &str, liveset: &HashSet<String>, conflict_graph: &mut ConflictGraph) {
-        if !(is_reg(s) || is_uvar(s)) { return; }
+        if !(self.type_verify(s) || is_uvar(s)) { return; }
         // every symbol has an entry.
         for live in liveset.iter() {
             if live != mov {
@@ -216,6 +211,40 @@ impl UncoverRegisterConflict {
         }
     }
 }
+
+
+pub struct UncoverFrameConflict {}
+impl UncoverConflict for UncoverFrameConflict {
+    fn type_verify(&self, s: &str) -> bool {
+        is_fv(s)
+    }
+
+    fn uncover_conflict(&self, uvars: &Vec<Expr>, tail: Expr) -> Expr {
+        let mut conflict_graph = ConflictGraph::new();
+        for uvar in uvars {
+            conflict_graph.insert(uvar.to_string(), HashSet::new());
+        }
+        let _liveset = self.tail_liveset(&tail, HashSet::new(), &mut conflict_graph);
+        return FrameConflict (conflict_graph, Box::new(tail));
+    }
+}
+
+pub struct UncoverRegisterConflict {}
+impl UncoverConflict for UncoverRegisterConflict {
+    fn type_verify(&self, s: &str) -> bool {
+        is_reg(s)
+    }
+
+    fn uncover_conflict(&self, uvars: &Vec<Expr>, tail: Expr) -> Expr {
+        let mut conflict_graph = ConflictGraph::new();
+        for uvar in uvars {
+            conflict_graph.insert(uvar.to_string(), HashSet::new());
+        }
+        let _liveset = self.tail_liveset(&tail, HashSet::new(), &mut conflict_graph);
+        return RegisterConflict (conflict_graph, Box::new(tail));
+    }
+}
+
 
 
 pub struct AssignRegister {}
@@ -803,7 +832,7 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseExpr{}.run(s);
     compile_formater("ParseExpr", &expr);
     let expr = UncoverRegisterConflict{}.run(expr);
-    compile_formater("UncoverRegisterCOnflict", &expr);
+    compile_formater("UncoverRegisterConflict", &expr);
     let expr = AssignRegister{}.run(expr);
     compile_formater("AssignRegister", &expr);
     let expr = DiscardCallLive{}.run(expr);

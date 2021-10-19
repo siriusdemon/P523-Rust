@@ -803,7 +803,7 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseExpr{}.run(s);
     compile_formater("ParseExpr", &expr);
     let expr = UncoverRegisterConflict{}.run(expr);
-    compile_formater("UncoverRegisterCOnflict", &expr);
+    compile_formater("UncoverRegisterConflict", &expr);
     let expr = AssignRegister{}.run(expr);
     compile_formater("AssignRegister", &expr);
     let expr = DiscardCallLive{}.run(expr);

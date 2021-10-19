@@ -4,6 +4,20 @@ use std::collections::HashSet;
 
 pub type ConflictGraph = HashMap<String, HashSet<String>>;
 
+fn conflict_graph_formatter(form: &str, conflict_graph: &ConflictGraph, tail: &Expr) -> String {
+    let mut cg = vec![];
+    for (v, conflicts) in conflict_graph {
+        let seqs: Vec<String> = conflicts.iter().map(|c| format!("{}", c)).collect();
+        let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+        let seqs_s = seqs_ref.join(" ");
+        let alist = format!("({} {{{}}})", v, seqs_s);
+        cg.push(alist);
+    }
+    let seqs_ref: Vec<&str> = cg.iter().map(|s| s.as_ref()).collect();
+    let seqs_s = seqs_ref.join(" ");
+    format!("({} ({}) {})", form, seqs_s, tail)
+}
+
 #[derive(Debug)]
 pub enum Expr {
     Letrec(Vec<Expr>, Box<Expr>),
@@ -11,6 +25,7 @@ pub enum Expr {
     Locate(HashMap<String, String>, Box<Expr>),
     Lambda(String, Box<Expr>),
     RegisterConflict(ConflictGraph, Box<Expr>),
+    FrameConflict(ConflictGraph, Box<Expr>),
     Begin(Vec<Expr>),
     Prim1(String, Box<Expr>),
     Prim2(String, Box<Expr>, Box<Expr>),
@@ -55,17 +70,11 @@ impl fmt::Display for Expr {
                 write!(f, "{}", s)
             }
             RegisterConflict (conflict_graph, box tail) => {
-                let mut cg = vec![];
-                for (v, conflicts) in conflict_graph {
-                    let seqs: Vec<String> = conflicts.iter().map(|c| format!("{}", c)).collect();
-                    let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
-                    let seqs_s = seqs_ref.join(" ");
-                    let alist = format!("({} {{{}}})", v, seqs_s);
-                    cg.push(alist);
-                }
-                let seqs_ref: Vec<&str> = cg.iter().map(|s| s.as_ref()).collect();
-                let seqs_s = seqs_ref.join(" ");
-                let s = format!("(register-conflict ({}) {})", seqs_s, tail);
+                let s = conflict_graph_formatter("register-conflict", &conflict_graph, tail);
+                write!(f, "{}", s)
+            }
+            FrameConflict (conflict_graph, box tail) => {
+                let s = conflict_graph_formatter("frame-conflict", &conflict_graph, tail);
                 write!(f, "{}", s)
             }
             Begin ( exprs ) => {
@@ -160,3 +169,4 @@ impl fmt::Display for Asm {
         }
     }
 }
+
