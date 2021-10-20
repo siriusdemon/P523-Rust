@@ -3,6 +3,7 @@ use std::fs::File;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::vec::IntoIter;
+use uuid::Uuid;
 
 use crate::syntax::{Expr, Asm, ConflictGraph};
 use crate::parser::{Scanner, Parser};
@@ -33,6 +34,38 @@ fn is_label(sym: &str) -> bool {
     v.len() == 2 && v[0].len() > 0 && v[1].len() > 0
 }
 
+fn gensym(prefix: &str) -> String {
+    let uid = &Uuid::new_v4().to_string()[..8];
+    let mut s = String::from(prefix);
+    s.push_str(uid);
+    return s;
+}
+
+fn gen_label() -> String {
+    gensym("tmp$")
+}
+
+fn gen_uvar() -> String {
+    gensym("t.")
+}
+
+fn flatten_begin(expr: Expr) -> Expr {
+    fn helper(exprs: Vec<Expr>, collector: &mut Vec<Expr>) {
+        for e in exprs {
+            if let Begin (vee) = e {
+                helper(vee, collector);
+            } else {
+                collector.push(e);
+            }
+        }
+    }
+    if let Begin (exprs) = expr {
+        let mut new_exprs = vec![];
+        helper(exprs, &mut new_exprs);
+        return Begin (new_exprs); 
+    }
+    return expr;
+}
 
 
 pub struct ParseExpr {}
@@ -255,6 +288,186 @@ impl IntroduceAllocationForm {
             }
             e => e,
         }
+    }
+}
+
+pub struct SelectInstructions {}
+impl SelectInstructions {
+    pub fn run(&self, expr: Expr) -> Expr {
+        if let Letrec (lambdas, box body) = expr {
+            let new_lambdas: Vec<Expr> = lambdas.into_iter().map(|e| self.helper(e)).collect();
+            let new_body = self.helper(body);
+            return Letrec (new_lambdas, Box::new(new_body));
+        }
+        panic!("Invalid Program {}", expr);
+    }
+
+    fn helper(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (label, box body) => Lambda (label, Box::new(self.helper(body))),
+            Locals (uvars, box Ulocals (mut unspills, box Locate (bindings, box FrameConflict (conflict_graph, box tail)))) => {
+                let new_tail = self.select_instruction_tail(&mut unspills, tail);
+                Locals (uvars, Box::new(Ulocals (unspills, Box::new(Locate (bindings, Box::new(FrameConflict (conflict_graph, Box::new(new_tail))))))))
+            }
+            Locate (bindings, box tail) => Locate (bindings, Box::new(tail)),
+            e => panic!("Invalid program {}", e),
+        }
+    }
+
+    fn select_instruction_tail(&self, unspills: &mut Vec<Expr>, tail: Expr) -> Expr {
+        match tail {
+            Begin (mut exprs) => {
+                let mut tail = exprs.pop().unwrap();
+                tail = self.select_instruction_tail(unspills, tail);
+                let new_effects: Vec<Expr> = exprs.into_iter().map(|e| self.select_instruction_effect(unspills, e)).collect();
+                return flatten_begin(Begin (vec![Begin (new_effects), tail]));
+            },
+            If (box pred, box b1, box b2) => {
+                let new_b1 = self.select_instruction_tail(unspills, b1);
+                let new_b2 = self.select_instruction_tail(unspills, b2);
+                let new_pred = self.select_instruction_pred(unspills, pred);
+                return If (Box::new(new_pred), Box::new(new_b1), Box::new(new_b2));
+            }
+            funcall => funcall,
+        }
+    }
+
+    fn select_instruction_pred(&self, unspills: &mut Vec<Expr>, pred: Expr) ->  Expr {
+        match pred {
+            Prim2 (relop, box Symbol (a), box Symbol (b)) => self.relop_fv_rewrite(relop, a, b, unspills),
+            Prim2 (relop, box Int64 (i), box Symbol (sym)) => {
+                match relop.as_str() {
+                    ">" => self.prim2("<", Symbol (sym), Int64 (i)),
+                    ">=" => self.prim2("<=", Symbol (sym), Int64 (i)),
+                    "<" => self.prim2(">", Symbol (sym), Int64 (i)),
+                    "<=" => self.prim2(">=", Symbol (sym), Int64 (i)),
+                    "=" => self.prim2("=", Symbol (sym), Int64 (i)),
+                    op => panic!("Invalid relop {}", op),
+                }
+            }
+            If (box pred, box b1, box b2) => {
+                let new_b1 = self.select_instruction_pred(unspills, b1);
+                let new_b2 = self.select_instruction_pred(unspills, b2);
+                let new_pred = self.select_instruction_pred(unspills, pred);
+                return If (Box::new(new_pred), Box::new(new_b1), Box::new(new_b2));
+            }
+            Begin (mut exprs) => {
+                let mut pred = exprs.pop().unwrap();
+                pred = self.select_instruction_pred(unspills, pred);
+                let new_effects: Vec<Expr> = exprs.into_iter().map(|e| self.select_instruction_effect(unspills, e)).collect();
+                return flatten_begin(Begin (vec![Begin (new_effects), pred]));
+            }
+            e => e
+        }
+    }
+
+    fn select_instruction_effect(&self, unspills: &mut Vec<Expr>, effect: Expr) -> Expr {
+        match effect {
+            Set (box Symbol (a), box Prim2 (op, box Symbol (b), box Symbol (c))) => {
+                if a != b && a != c {
+                    return self.rewrite(a, op, Symbol (b), Symbol (c), unspills);
+                }
+                if a == b {
+                    return self.set2_fv_rewrite(a, op, b, c, unspills);
+                }
+                if a == c && self.is_swapable(&op) {
+                    return self.set2_fv_rewrite(a, op, c, b, unspills);
+                }
+                return self.rewrite(a, op, Symbol (b), Symbol (c), unspills);
+            }
+            Set (box Symbol (a), box Prim2 (op, box Int64 (i), box Symbol (b))) => {
+                if a != b {
+                    return self.rewrite(a, op, Int64 (i), Symbol (b), unspills);
+                }
+                if self.is_swapable(&op) {
+                    return self.set2(Symbol (a), op, Symbol (b), Int64 (i));
+                }
+                return self.rewrite(a, op, Int64 (i), Symbol (b), unspills);
+            }
+            Set (box Symbol (a), box Prim2 (op, box Symbol (b), box Int64 (i))) => {
+                if a == b {
+                    return self.set2(Symbol (a), op, Symbol (b), Int64 (i));
+                }
+                return self.rewrite(a, op, Symbol (b), Int64 (i), unspills);
+            }
+            Set (box Symbol (a), box Symbol (b)) => {
+                return self.set1_fv_rewrite(a, b, unspills);
+            }
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.select_instruction_pred(unspills, pred);
+                let new_b1 = self.select_instruction_effect(unspills, b1);
+                let new_b2 = self.select_instruction_effect(unspills, b2);
+                return If (Box::new(new_pred), Box::new(new_b1), Box::new(new_b2));
+            }
+            Begin (exprs) => {
+                let new_exprs: Vec<Expr> = exprs.into_iter().map(|e| self.select_instruction_effect(unspills, e)).collect();
+                return flatten_begin(Begin (new_exprs));
+            }
+            e => e,
+        }
+    }
+
+    fn prim2(&self, op: &str, v1: Expr, v2: Expr) -> Expr {
+        Prim2 (op.to_string(), Box::new(v1), Box::new(v2))
+    }
+
+    fn set2(&self, dst: Expr, op: String, opv1: Expr, opv2: Expr) -> Expr {
+        let prim = Prim2 (op, Box::new(opv1), Box::new(opv2));
+        Set (Box::new(dst), Box::new(prim))
+    }
+
+    fn set1(&self, dst: Expr, src: Expr) -> Expr {
+        Set (Box::new(dst), Box::new(src))
+    }
+
+    fn is_swapable(&self, op: &str) -> bool {
+        match op {
+            "+" | "*" | "logor" | "logand" => true,
+            "-" | "sra" => false,
+            e => panic!("Invalid op {}", e),
+        }
+    }
+
+    fn relop_fv_rewrite(&self, relop: String, a: String, b: String, unspills: &mut Vec<Expr>) -> Expr {
+        if is_fv(&a) && is_fv(&b) {
+            let new_uvar = gen_uvar();
+            unspills.push(Symbol (new_uvar.clone()));
+            let expr1 = self.set1(Symbol (new_uvar.clone()), Symbol (b));
+            let expr2 = Prim2 (relop, Box::new(Symbol (a)), Box::new(Symbol (new_uvar)));
+            return Begin (vec![expr1, expr2]);
+        }
+        return Prim2 (relop, Box::new(Symbol (a)), Box::new(Symbol (b)));
+    }
+
+    fn set1_fv_rewrite(&self, a: String, b: String, unspills: &mut Vec<Expr>) -> Expr {
+        if is_fv(&a) && is_fv(&b) {
+            let new_uvar = gen_uvar();
+            unspills.push(Symbol (new_uvar.clone()));
+            let expr1 = self.set1(Symbol (new_uvar.clone()), Symbol (b));
+            let expr2 = self.set1(Symbol (a), Symbol (new_uvar));
+            return Begin (vec![expr1, expr2]);
+        }
+        return self.set1(Symbol (a), Symbol (b));
+    }
+
+    fn set2_fv_rewrite(&self, a: String, op: String, b: String, c: String, unspills: &mut Vec<Expr>) -> Expr {
+        if is_fv(&a) && is_fv(&c) {
+            let new_uvar = gen_uvar();
+            unspills.push(Symbol (new_uvar.clone()));
+            let expr1 = self.set1(Symbol (new_uvar.clone()), Symbol (c));
+            let expr2 = self.set2(Symbol (a), op, Symbol (b), Symbol (new_uvar));
+            return Begin (vec![expr1, expr2]);
+        } 
+        return self.set2(Symbol (a), op, Symbol (b), Symbol (c));
+    }
+    
+    fn rewrite(&self, a: String, op: String, b: Expr, c: Expr, unspills: &mut Vec<Expr>) -> Expr {
+        let new_uvar = gen_uvar();
+        unspills.push(Symbol (new_uvar.clone()));
+        let expr1 = self.set1(Symbol (new_uvar.clone()), b);
+        let expr2 = self.set2(Symbol (new_uvar.clone()), op, Symbol (new_uvar.clone()), c);
+        let expr3 = self.set1(Symbol (a), Symbol (new_uvar));
+        return Begin (vec![expr1, expr2, expr3]);
     }
 }
 
@@ -563,7 +776,6 @@ impl ExposeBasicBlocks {
     }
 
     fn gensym(&self) -> String {
-        use uuid::Uuid;
         let uid = &Uuid::new_v4().to_string()[..8];
         let mut s = String::from("tmp$");
         s.push_str(uid);
@@ -884,7 +1096,16 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formater("UncoverFrameConflict", &expr);
     let expr = IntroduceAllocationForm{}.run(expr);
     compile_formater("IntroduceAllocationForm", &expr);
+    let expr = SelectInstructions{}.run(expr);
+    compile_formater("SelectInstructions", &expr);
+    // loop {
+    //     expr = select_instrcution(expr)
 
+    //     if everybody_home(&expr) [
+    //         break;
+    //     ]
+    //     ...
+    // }
     // let expr = UncoverRegisterConflict{}.run(expr);
     // compile_formater("UncoverRegisterConflict", &expr);
     // let expr = AssignRegister{}.run(expr);

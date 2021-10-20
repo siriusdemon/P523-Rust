@@ -36,9 +36,31 @@ Note: As you proceeds, the framework also evolves. Some patterns appear and cert
 + OptimizeJump
 + CompileToAsm
 
+tests in this week record some case which will be solved in Week5.
+
 ### Week4
 
 + ParseExpr
 + UncoverRegisterConflict
 + AssginRegister
 + DiscardCallLive
+
+
+### Week5
+
++ UncoverFrameConflict
++ IntroduceAllocationForm
++ SelectInstruction
+
+convince yourself that the following cases cover the (set a (op b c))
+```lisp
+(set a (op b c))
+(set a (op a b))
+(set a (op b a))
+(set a (op imm a))
+(set a (op a imm))
+(set a (op imm b))
+(set a (op b imm))
+```
+
+possibly do stupid replace.
