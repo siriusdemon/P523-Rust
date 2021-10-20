@@ -15,14 +15,22 @@ fn conflict_graph_formatter(form: &str, conflict_graph: &ConflictGraph, tail: &E
     }
     let seqs_ref: Vec<&str> = cg.iter().map(|s| s.as_ref()).collect();
     let seqs_s = seqs_ref.join(" ");
-    format!("({} ({}) {})", form, seqs_s, tail)
+    format!("({} ({})\n  {})", form, seqs_s, tail)
+}
+
+fn seqs_formatter<E: std::fmt::Display>(form: &str, seqs: impl Iterator<Item=E>,  join: &str, tail: &Expr) -> String {
+    let seqs: Vec<String> = seqs.map(|e| format!("{}", e)).collect();
+    let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+    let seqs_s = seqs_ref.join(join);
+    format!("({} ({})\n  {})", form, seqs_s, tail)
 }
 
 #[derive(Debug)]
 pub enum Expr {
     Letrec(Vec<Expr>, Box<Expr>),
-    Locals(Vec<Expr>, Box<Expr>),
-    Ulocals(Vec<Expr>, Box<Expr>),
+    Locals(HashSet<String>, Box<Expr>),
+    Ulocals(HashSet<String>, Box<Expr>),
+    Spills(HashSet<String>, Box<Expr>),
     Locate(HashMap<String, String>, Box<Expr>),
     Lambda(String, Box<Expr>),
     RegisterConflict(ConflictGraph, Box<Expr>),
@@ -46,24 +54,19 @@ impl fmt::Display for Expr {
         use Expr::*;
         match self {
             Letrec (lambdas, box body) => {
-                let seqs: Vec<String> = lambdas.iter().map(|e| format!("{}", e)).collect();
-                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
-                let seqs_s = seqs_ref.join("\n");
-                let s = format!("(letrec ({})\n  {})", seqs_s, body);
+                let s = seqs_formatter("letrec", lambdas.iter(), "\n", body);
                 write!(f, "{}", s)
             },
             Locals (uvars, box tail) => {
-                let seqs: Vec<String> = uvars.iter().map(|e| format!("{}", e)).collect();
-                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
-                let seqs_s = seqs_ref.join(" ");
-                let s = format!("(locals ({})\n  {})", seqs_s, tail);
+                let s = seqs_formatter("locals", uvars.iter(), " ", tail);
                 write!(f, "{}", s)
             }
             Ulocals (unspills, box tail) => {
-                let seqs: Vec<String> = unspills.iter().map(|e| format!("{}", e)).collect();
-                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
-                let seqs_s = seqs_ref.join(" ");
-                let s = format!("(ulocals ({})\n  {})", seqs_s, tail);
+                let s = seqs_formatter("ulocals", unspills.iter(), " ", tail);
+                write!(f, "{}", s)
+            }
+            Spills (spills, box tail) => {
+                let s = seqs_formatter("spills", spills.iter(), " ", tail);
                 write!(f, "{}", s)
             }
             Lambda (label, box body) => {
@@ -78,11 +81,11 @@ impl fmt::Display for Expr {
                 write!(f, "{}", s)
             }
             RegisterConflict (conflict_graph, box tail) => {
-                let s = conflict_graph_formatter("register-conflict", &conflict_graph, tail);
+                let s = conflict_graph_formatter("register-conflict", conflict_graph, tail);
                 write!(f, "{}", s)
             }
             FrameConflict (conflict_graph, box tail) => {
-                let s = conflict_graph_formatter("frame-conflict", &conflict_graph, tail);
+                let s = conflict_graph_formatter("frame-conflict", conflict_graph, tail);
                 write!(f, "{}", s)
             }
             Begin ( exprs ) => {

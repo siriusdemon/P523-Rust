@@ -83,32 +83,7 @@ impl ParseExpr {
 
 pub trait UncoverConflict {
     fn type_verify(&self, s: &str) -> bool;
-    fn uncover_conflict(&self, uvars: &Vec<Expr>, tail: Expr) -> Expr;
-    fn run(&self, expr: Expr) -> Expr {
-        match expr {
-            Letrec (lambdas, box body) => {
-                let new_lambdas: Vec<Expr> = lambdas.into_iter()
-                                                .map(|e| self.helper(e))
-                                                .collect();
-                let new_body = self.helper(body);
-                return Letrec (new_lambdas, Box::new(new_body));
-            }
-            _ => panic!("Invalid Program {}", expr),
-        }
-    } 
-
-    fn helper(&self, expr: Expr) -> Expr {
-        match expr {
-            Lambda (labl, box body) => Lambda (labl, Box::new(self.helper(body))),
-            Locals (uvars, box tail) => {
-                let new_tail = self.uncover_conflict(&uvars, tail);
-                return Locals (uvars, Box::new(new_tail));
-            }
-            e => e,
-        }
-    }
-
-
+    fn uncover_conflict(&self, conflict_graph: ConflictGraph, tail: Expr) -> Expr;
     fn tail_liveset(&self, tail: &Expr, mut liveset: HashSet<String>, conflict_graph: &mut ConflictGraph) -> HashSet<String> {
         match tail {
             Funcall (labl, args) => {
@@ -249,16 +224,42 @@ pub trait UncoverConflict {
 
 
 pub struct UncoverFrameConflict {}
+impl UncoverFrameConflict {
+    fn run(&self, expr: Expr) -> Expr {
+        match expr {
+            Letrec (lambdas, box body) => {
+                let new_lambdas: Vec<Expr> = lambdas.into_iter()
+                                                .map(|e| self.helper(e))
+                                                .collect();
+                let new_body = self.helper(body);
+                return Letrec (new_lambdas, Box::new(new_body));
+            }
+            _ => panic!("Invalid Program {}", expr),
+        }
+    } 
+
+    fn helper(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (labl, box body) => Lambda (labl, Box::new(self.helper(body))),
+            Locals (uvars, box tail) => {
+                let mut conflict_graph = ConflictGraph::new();
+                for uvar in uvars.iter() {
+                    conflict_graph.insert(uvar.to_string(), HashSet::new());
+                }
+                let new_tail = self.uncover_conflict(conflict_graph, tail);
+                return Locals (uvars, Box::new(new_tail));
+            }
+            e => e,
+        }
+    }
+}
+
 impl UncoverConflict for UncoverFrameConflict {
     fn type_verify(&self, s: &str) -> bool {
         is_fv(s)
     }
 
-    fn uncover_conflict(&self, uvars: &Vec<Expr>, tail: Expr) -> Expr {
-        let mut conflict_graph = ConflictGraph::new();
-        for uvar in uvars {
-            conflict_graph.insert(uvar.to_string(), HashSet::new());
-        }
+    fn uncover_conflict(&self, mut conflict_graph: ConflictGraph, tail: Expr) -> Expr {
         let _liveset = self.tail_liveset(&tail, HashSet::new(), &mut conflict_graph);
         return FrameConflict (conflict_graph, Box::new(tail));
     }
@@ -283,7 +284,7 @@ impl IntroduceAllocationForm {
         match expr {
             Lambda (labl, box body) => Lambda (labl, Box::new(self.helper(body))),
             Locals (uvars, box tail) => {
-                let new_tail = Ulocals (vec![], Box::new(Locate (HashMap::new(), Box::new(tail))));
+                let new_tail = Ulocals (HashSet::new(), Box::new(Locate (HashMap::new(), Box::new(tail))));
                 return Locals (uvars, Box::new(new_tail));
             }
             e => e,
@@ -314,7 +315,7 @@ impl SelectInstructions {
         }
     }
 
-    fn select_instruction_tail(&self, unspills: &mut Vec<Expr>, tail: Expr) -> Expr {
+    fn select_instruction_tail(&self, unspills: &mut HashSet<String>, tail: Expr) -> Expr {
         match tail {
             Begin (mut exprs) => {
                 let mut tail = exprs.pop().unwrap();
@@ -332,7 +333,7 @@ impl SelectInstructions {
         }
     }
 
-    fn select_instruction_pred(&self, unspills: &mut Vec<Expr>, pred: Expr) ->  Expr {
+    fn select_instruction_pred(&self, unspills: &mut HashSet<String>, pred: Expr) ->  Expr {
         match pred {
             Prim2 (relop, box Symbol (a), box Symbol (b)) => self.relop_fv_rewrite(relop, a, b, unspills),
             Prim2 (relop, box Int64 (i), box Symbol (sym)) => {
@@ -361,7 +362,7 @@ impl SelectInstructions {
         }
     }
 
-    fn select_instruction_effect(&self, unspills: &mut Vec<Expr>, effect: Expr) -> Expr {
+    fn select_instruction_effect(&self, unspills: &mut HashSet<String>, effect: Expr) -> Expr {
         match effect {
             Set (box Symbol (a), box Prim2 (op, box Symbol (b), box Symbol (c))) => {
                 if a != b && a != c {
@@ -428,10 +429,10 @@ impl SelectInstructions {
         }
     }
 
-    fn relop_fv_rewrite(&self, relop: String, a: String, b: String, unspills: &mut Vec<Expr>) -> Expr {
+    fn relop_fv_rewrite(&self, relop: String, a: String, b: String, unspills: &mut HashSet<String>) -> Expr {
         if is_fv(&a) && is_fv(&b) {
             let new_uvar = gen_uvar();
-            unspills.push(Symbol (new_uvar.clone()));
+            unspills.insert(new_uvar.clone());
             let expr1 = self.set1(Symbol (new_uvar.clone()), Symbol (b));
             let expr2 = Prim2 (relop, Box::new(Symbol (a)), Box::new(Symbol (new_uvar)));
             return Begin (vec![expr1, expr2]);
@@ -439,10 +440,10 @@ impl SelectInstructions {
         return Prim2 (relop, Box::new(Symbol (a)), Box::new(Symbol (b)));
     }
 
-    fn set1_fv_rewrite(&self, a: String, b: String, unspills: &mut Vec<Expr>) -> Expr {
+    fn set1_fv_rewrite(&self, a: String, b: String, unspills: &mut HashSet<String>) -> Expr {
         if is_fv(&a) && is_fv(&b) {
             let new_uvar = gen_uvar();
-            unspills.push(Symbol (new_uvar.clone()));
+            unspills.insert(new_uvar.clone());
             let expr1 = self.set1(Symbol (new_uvar.clone()), Symbol (b));
             let expr2 = self.set1(Symbol (a), Symbol (new_uvar));
             return Begin (vec![expr1, expr2]);
@@ -450,10 +451,10 @@ impl SelectInstructions {
         return self.set1(Symbol (a), Symbol (b));
     }
 
-    fn set2_fv_rewrite(&self, a: String, op: String, b: String, c: String, unspills: &mut Vec<Expr>) -> Expr {
+    fn set2_fv_rewrite(&self, a: String, op: String, b: String, c: String, unspills: &mut HashSet<String>) -> Expr {
         if is_fv(&a) && is_fv(&c) {
             let new_uvar = gen_uvar();
-            unspills.push(Symbol (new_uvar.clone()));
+            unspills.insert(new_uvar.clone());
             let expr1 = self.set1(Symbol (new_uvar.clone()), Symbol (c));
             let expr2 = self.set2(Symbol (a), op, Symbol (b), Symbol (new_uvar));
             return Begin (vec![expr1, expr2]);
@@ -461,9 +462,9 @@ impl SelectInstructions {
         return self.set2(Symbol (a), op, Symbol (b), Symbol (c));
     }
     
-    fn rewrite(&self, a: String, op: String, b: Expr, c: Expr, unspills: &mut Vec<Expr>) -> Expr {
+    fn rewrite(&self, a: String, op: String, b: Expr, c: Expr, unspills: &mut HashSet<String>) -> Expr {
         let new_uvar = gen_uvar();
-        unspills.push(Symbol (new_uvar.clone()));
+        unspills.insert(new_uvar.clone());
         let expr1 = self.set1(Symbol (new_uvar.clone()), b);
         let expr2 = self.set2(Symbol (new_uvar.clone()), op, Symbol (new_uvar.clone()), c);
         let expr3 = self.set1(Symbol (a), Symbol (new_uvar));
@@ -472,16 +473,45 @@ impl SelectInstructions {
 }
 
 pub struct UncoverRegisterConflict {}
+impl UncoverRegisterConflict {
+    fn run(&self, expr: Expr) -> Expr {
+        match expr {
+            Letrec (lambdas, box body) => {
+                let new_lambdas: Vec<Expr> = lambdas.into_iter()
+                                                .map(|e| self.helper(e))
+                                                .collect();
+                let new_body = self.helper(body);
+                return Letrec (new_lambdas, Box::new(new_body));
+            }
+            _ => panic!("Invalid Program {}", expr),
+        }
+    } 
+
+    fn helper(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (labl, box body) => Lambda (labl, Box::new(self.helper(body))),
+            Locals (uvars, box Ulocals (unspills, box Locate (bindings, box FrameConflict (f_conflict_graph, box tail)))) => {
+                let mut r_conflict_graph = ConflictGraph::new();
+                for u in uvars.iter() {
+                    r_conflict_graph.insert(u.to_string(), HashSet::new());
+                }
+                for u in unspills.iter() {
+                    r_conflict_graph.insert(u.to_string(), HashSet::new());
+                }
+                let new_tail = self.uncover_conflict(r_conflict_graph, tail);
+                Locals (uvars, Box::new(Ulocals (unspills, Box::new(Locate (bindings, Box::new(FrameConflict (f_conflict_graph, Box::new(new_tail))))))))
+            }
+            e => e,
+        }
+    }
+}
+
 impl UncoverConflict for UncoverRegisterConflict {
     fn type_verify(&self, s: &str) -> bool {
         is_reg(s)
     }
 
-    fn uncover_conflict(&self, uvars: &Vec<Expr>, tail: Expr) -> Expr {
-        let mut conflict_graph = ConflictGraph::new();
-        for uvar in uvars {
-            conflict_graph.insert(uvar.to_string(), HashSet::new());
-        }
+    fn uncover_conflict(&self, mut conflict_graph: ConflictGraph, tail: Expr) -> Expr {
         let _liveset = self.tail_liveset(&tail, HashSet::new(), &mut conflict_graph);
         return RegisterConflict (conflict_graph, Box::new(tail));
     }
@@ -504,8 +534,14 @@ impl AssignRegister {
     fn helper(&self, expr: Expr) -> Expr {
         match expr {
             Lambda (label, box body) => Lambda (label, Box::new(self.helper(body))),
-            Locals (_, box RegisterConflict (conflict_graph, box tail) ) =>  self.assign_registers(conflict_graph, tail),
-            _ => unreachable!(),
+            // Locals (uvars, 
+            //     box Ulocals (unspills, 
+            //         box Locate (bindings, 
+            //             box FrameConflict (f_conflict_graph, 
+            //                 box RegisterConflict (r_conflict_graph, box tail))))) => {
+
+            //                 }
+            e => e,
         }
     }
     fn assign_registers(&self, mut conflict_graph: ConflictGraph, tail: Expr) -> Expr {
@@ -865,22 +901,8 @@ impl FlattenProgram {
     fn flatten(&self, expr: Expr) -> Expr {
         match expr {
             Lambda (label, box tail) => Lambda (label, Box::new(self.flatten(tail))),
-            Begin (exprs) => {
-                let mut new_exprs = vec![];
-                self.flatten_begin(exprs, &mut new_exprs);
-                return Begin (new_exprs); 
-            },
+            Begin (exprs) => flatten_begin(Begin (exprs)),
             e => e,
-        }
-    }
-    
-    fn flatten_begin(&self, ve: Vec<Expr>, res: &mut Vec<Expr>) {
-        for e in ve {
-            if let Begin (vee) = e {
-                self.flatten_begin(vee, res);
-            } else {
-                res.push(e);
-            }
         }
     }
 }
@@ -1098,6 +1120,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formater("IntroduceAllocationForm", &expr);
     let expr = SelectInstructions{}.run(expr);
     compile_formater("SelectInstructions", &expr);
+    let expr = UncoverRegisterConflict{}.run(expr);
+    compile_formater("UncoverRegisterConflict", &expr);
     // loop {
     //     expr = select_instrcution(expr)
 
@@ -1106,8 +1130,6 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     //     ]
     //     ...
     // }
-    // let expr = UncoverRegisterConflict{}.run(expr);
-    // compile_formater("UncoverRegisterConflict", &expr);
     // let expr = AssignRegister{}.run(expr);
     // compile_formater("AssignRegister", &expr);
     // let expr = DiscardCallLive{}.run(expr);

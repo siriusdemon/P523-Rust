@@ -1,5 +1,6 @@
 use std::vec::IntoIter;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::syntax::*;
 
@@ -178,11 +179,11 @@ impl Parser {
     fn parse_locals(&mut self) -> Expr {
         let _locals = self.remove_top();
         let _uvar_left = self.remove_top();
-        let mut uvars = vec![];
+        let mut uvars = HashSet::new();
         while let Some(ref t) = self.top() {
             if t.token.as_str() != ")" {
-                let uvar = self.parse_expr();
-                uvars.push(uvar);
+                let uvar = self.remove_top().unwrap().token;
+                uvars.insert(uvar);
             } else {
                 let _uvar_right = self.remove_top();
                 let tail = self.parse_expr();
