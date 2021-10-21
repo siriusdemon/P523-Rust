@@ -597,8 +597,11 @@ impl AssignRegister {
 
     fn find_available(&self, conflict: HashSet<String>, assigned: &HashMap<String, String>) -> Option<String> {
         let mut unavailable: HashSet<&str> = HashSet::new();
-        for val in assigned.values() {
-            unavailable.insert(val);
+        // record the register that its conflicting variables already in use.
+        for (var, reg) in assigned {
+            if conflict.contains(var) {
+                unavailable.insert(reg);
+            }
         }
         for reg in REGISTERS {
             if !unavailable.contains(reg) && !conflict.contains(reg) {
@@ -609,6 +612,35 @@ impl AssignRegister {
     }
 }
 
+
+pub struct AssignFrame {}
+impl AssignFrame {
+    pub fn run(&self, expr: Expr) -> Expr {
+        match expr {
+            Letrec (lambdas, box body) => {
+                let new_lambdas = lambdas.into_iter().map(|e| self.helper(e)).collect();
+                let new_body = self.helper(body);
+                return Letrec (new_lambdas, Box::new(new_body));
+            }
+            _ => unreachable!(),
+        }
+    }
+    fn helper(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (label, box body) => Lambda (label, Box::new(self.helper(body))),
+            Locals (mut uvars, box Ulocals (unspills, box Spills (spills, box Locate (mut bindings, box FrameConflict (fc_graph, box tail))))) => {
+                let mut assigned = HashMap::new();
+                self.assign_frame(spills, &bindings, &fc_graph, &mut assigned);
+                Locals (uvars, Box::new(Ulocals (unspills, Box::new(Locate (bindings, Box::new(FrameConflict (fc_graph, Box::new(tail))))))))
+            }
+            e => e,
+        }
+    }
+
+    fn assign_frame(&self, spills: HashSet<String>, bindings: &HashMap<String, String>, fc_graph: &ConflictGraph, assigned: &mut HashMap<String, String>) {
+
+    }
+}
 
 pub struct DiscardCallLive {}
 impl DiscardCallLive {
