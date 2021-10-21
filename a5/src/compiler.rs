@@ -13,7 +13,7 @@ use Asm::*;
 
 // ---------------------- geenral predicate --------------------------------
 const N_REG :usize = 15;
-const registers :[&str; N_REG] = ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+const REGISTERS :[&str; N_REG] = ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
                                   "r8" , "r9" , "r10", "r11", "r12", "r13", "r14", "r15" ];
 
 fn is_uvar(sym: &str) -> bool {
@@ -22,7 +22,7 @@ fn is_uvar(sym: &str) -> bool {
 }
 
 fn is_reg(reg: &str) -> bool {
-    registers.contains(&reg)
+    REGISTERS.contains(&reg)
 }
 
 fn is_fv(s: &str) -> bool {
@@ -534,43 +534,54 @@ impl AssignRegister {
     fn helper(&self, expr: Expr) -> Expr {
         match expr {
             Lambda (label, box body) => Lambda (label, Box::new(self.helper(body))),
-            // Locals (uvars, 
-            //     box Ulocals (unspills, 
-            //         box Locate (bindings, 
-            //             box FrameConflict (f_conflict_graph, 
-            //                 box RegisterConflict (r_conflict_graph, box tail))))) => {
-
-            //                 }
+            Locals (mut uvars, box Ulocals (unspills, box Locate (bindings, box FrameConflict (fc_graph, box RegisterConflict (mut rc_graph, box tail))))) => {
+                let mut assigned = HashMap::new();
+                let mut spills = HashSet::new();
+                self.assign_registers(&mut uvars, rc_graph, &mut assigned, &mut spills);
+                if spills.len() == 0 {
+                    return Locate (assigned, Box::new(tail));
+                }
+                Locals (uvars, Box::new(Ulocals (unspills, 
+                    Box::new(Spills (spills, Box::new(Locate (bindings, 
+                        Box::new(FrameConflict (fc_graph, Box::new(tail))))))))))
+            }
             e => e,
         }
     }
-    fn assign_registers(&self, mut conflict_graph: ConflictGraph, tail: Expr) -> Expr {
-        let mut assigned = HashMap::new();
-        let mut available = registers.iter().map(|reg| reg.to_string()).collect();
-        self.assign_helper(&mut conflict_graph, &mut assigned, &mut available);
-        return Locate (assigned, Box::new(tail));
-    }
-
-    fn assign_helper(&self, conflict_graph: &mut ConflictGraph, assigned: &mut HashMap<String, String>, available: &mut HashSet<String>) {
+    fn assign_registers(&self, uvars: &mut HashSet<String>, mut conflict_graph: ConflictGraph, assigned: &mut HashMap<String, String>, spills: &mut HashSet<String>) {
         if conflict_graph.len() == 0 { return; }
-        let v = self.proposal_var(conflict_graph);
+        let v = self.proposal_var(uvars, &conflict_graph);
         let conflicts = conflict_graph.remove(&v).unwrap();
-        // remove the picked variable from the conflict graph
+        // update conflict_graph and spillable
         for set in conflict_graph.values_mut() {
             set.remove(&v);
         }
-        // assign other variable firstlu
-        self.assign_helper(conflict_graph, assigned, available);
+        uvars.remove(&v);
+        // assign other variable firstly
+        self.assign_registers(uvars, conflict_graph, assigned, spills);
         // assign the picked variables
-        let reg = self.find_available(conflicts, available);
-        available.remove(&reg);
-        assigned.insert(v, reg);
+        if let Some(reg) = self.find_available(conflicts, assigned) {
+            assigned.insert(v, reg);
+        } else {
+            spills.insert(v);
+        }
     }
 
-    // find the low-degree variable
-    fn proposal_var(&self, conflict_graph: &ConflictGraph) -> String {
+    // find the low-degree variable, start from spillable variables
+    fn proposal_var(&self, uvars: &HashSet<String>, conflict_graph: &ConflictGraph) -> String {
         let mut v = "";
-        let mut degree = usize::max_value();
+        let mut degree = usize::MAX;
+        if uvars.len() > 0 {
+            for u in uvars.iter() {
+                let list = conflict_graph.get(u).unwrap();
+                if list.len() < degree {
+                    v = u;
+                    degree = list.len();
+                }
+            }
+            return v.to_string();
+        }
+        // uvars is empty, means no spill variables
         for (k, list) in conflict_graph {
             if list.len() < degree {
                 v = k;
@@ -580,11 +591,17 @@ impl AssignRegister {
         return v.to_string();
     }
 
-    fn find_available(&self, conflict: HashSet<String>, available: &HashSet<String>) -> String {
-        for reg in available.difference(&conflict) {
-            return reg.to_string();
+    fn find_available(&self, conflict: HashSet<String>, assigned: &HashMap<String, String>) -> Option<String> {
+        let mut unavailable: HashSet<&str> = HashSet::new();
+        for val in assigned.values() {
+            unavailable.insert(val);
         }
-        panic!("Unable to find a available register!");
+        for reg in REGISTERS {
+            if !unavailable.contains(reg) && !conflict.contains(reg) {
+                return Some(reg.to_string()); 
+            }
+        }
+        return None;
     }
 }
 
@@ -1122,6 +1139,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formater("SelectInstructions", &expr);
     let expr = UncoverRegisterConflict{}.run(expr);
     compile_formater("UncoverRegisterConflict", &expr);
+    let expr = AssignRegister{}.run(expr);
+    compile_formater("AssignRegister", &expr);
     // loop {
     //     expr = select_instrcution(expr)
 
