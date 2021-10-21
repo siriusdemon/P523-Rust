@@ -537,11 +537,14 @@ impl AssignRegister {
             Locals (mut uvars, box Ulocals (unspills, box Locate (bindings, box FrameConflict (fc_graph, box RegisterConflict (mut rc_graph, box tail))))) => {
                 let mut assigned = HashMap::new();
                 let mut spills = HashSet::new();
+                let mut backup = uvars.clone();
                 self.assign_registers(&mut uvars, rc_graph, &mut assigned, &mut spills);
-                if spills.len() == 0 {
+                if spills.is_empty() {
                     return Locate (assigned, Box::new(tail));
                 }
-                Locals (uvars, Box::new(Ulocals (unspills, 
+                // assign fail, spill the uvars
+                spills.iter().for_each(|var| {backup.remove(var);});
+                Locals (backup, Box::new(Ulocals (unspills, 
                     Box::new(Spills (spills, Box::new(Locate (bindings, 
                         Box::new(FrameConflict (fc_graph, Box::new(tail))))))))))
             }
@@ -556,6 +559,7 @@ impl AssignRegister {
         for set in conflict_graph.values_mut() {
             set.remove(&v);
         }
+        // if v is a spillable, it will be removed, it not, it will stay in unlocals
         uvars.remove(&v);
         // assign other variable firstly
         self.assign_registers(uvars, conflict_graph, assigned, spills);
