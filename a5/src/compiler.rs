@@ -12,9 +12,20 @@ use Expr::*;
 use Asm::*;
 
 // ---------------------- geenral predicate --------------------------------
-const N_REG :usize = 15;
-const REGISTERS :[&str; N_REG] = ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
-                                  "r8" , "r9" , "r10", "r11", "r12", "r13", "r14", "r15" ];
+const REGISTERS :[&str; 15] = ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+                                "r8" , "r9" , "r10", "r11", "r12", "r13", "r14", "r15" ];
+const FRAME_VARS :[&str; 101] = [
+    "fv0", "fv1", "fv2", "fv3", "fv4", "fv5", "fv6", "fv7", "fv8", "fv9", "fv10", 
+    "fv11", "fv12", "fv13", "fv14", "fv15", "fv16", "fv17", "fv18", "fv19", "fv20", 
+    "fv21", "fv22", "fv23", "fv24", "fv25", "fv26", "fv27", "fv28", "fv29", "fv30", 
+    "fv31", "fv32", "fv33", "fv34", "fv35", "fv36", "fv37", "fv38", "fv39", "fv40", 
+    "fv41", "fv42", "fv43", "fv44", "fv45", "fv46", "fv47", "fv48", "fv49", "fv50", 
+    "fv51", "fv52", "fv53", "fv54", "fv55", "fv56", "fv57", "fv58", "fv59", "fv60",
+    "fv61", "fv62", "fv63", "fv64", "fv65", "fv66", "fv67", "fv68", "fv69", "fv70",
+    "fv71", "fv72", "fv73", "fv74", "fv75", "fv76", "fv77", "fv78", "fv79", "fv80",
+    "fv81", "fv82", "fv83", "fv84", "fv85", "fv86", "fv87", "fv88", "fv89", "fv90",
+    "fv91", "fv92", "fv93", "fv94", "fv95", "fv96", "fv97", "fv98", "fv99", "fv100",
+];
 
 fn is_uvar(sym: &str) -> bool {
     let v: Vec<&str> = sym.split('.').collect();
@@ -629,16 +640,100 @@ impl AssignFrame {
         match expr {
             Lambda (label, box body) => Lambda (label, Box::new(self.helper(body))),
             Locals (mut uvars, box Ulocals (unspills, box Spills (spills, box Locate (mut bindings, box FrameConflict (fc_graph, box tail))))) => {
-                let mut assigned = HashMap::new();
-                self.assign_frame(spills, &bindings, &fc_graph, &mut assigned);
+                self.assign_frame(spills, &mut bindings, &fc_graph);
                 Locals (uvars, Box::new(Ulocals (unspills, Box::new(Locate (bindings, Box::new(FrameConflict (fc_graph, Box::new(tail))))))))
             }
             e => e,
         }
     }
 
-    fn assign_frame(&self, spills: HashSet<String>, bindings: &HashMap<String, String>, fc_graph: &ConflictGraph, assigned: &mut HashMap<String, String>) {
+    fn assign_frame(&self, mut spills: HashSet<String>, bindings: &mut HashMap<String, String>, fc_graph: &ConflictGraph) {
+        if spills.is_empty() { return; }
+        for var in spills.drain() {
+            let fv = self.find_compatible(&var, bindings, fc_graph);
+            bindings.insert(var, fv);
+        }
+    }
 
+    fn find_compatible(&self, var: &String, bindings: &mut HashMap<String, String>, fc_graph: &ConflictGraph) -> String {
+        let mut uncompat: HashSet<&str> = HashSet::new();
+        let conflicts = fc_graph.get(var).unwrap();
+        for (v, fv) in bindings {
+            if conflicts.contains(v) {
+                uncompat.insert(fv);
+            }
+        }
+        for fvi in FRAME_VARS {
+            if !uncompat.contains(fvi) && !conflicts.contains(fvi) {
+                return fvi.to_string();
+            }
+        }
+        panic!("Aha, frame vars is not enough!");
+    }
+}
+
+pub struct FinalizeFrameLocations {}
+impl FinalizeFrameLocations {
+    fn run(&self, expr: Expr) -> Expr {
+        match expr {
+            Letrec (lambdas, box body) => {
+                let new_lambdas = lambdas.into_iter().map(|e| self.helper(e)).collect();
+                let new_body = self.helper(body);
+                return Letrec (new_lambdas, Box::new(new_body));
+            }
+            _ => unreachable!(),
+        }
+    }
+    fn helper(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (label, box body) => Lambda (label, Box::new(self.helper(body))),
+            Locals (uvars, box Ulocals (unspills, box Locate (bindings, box FrameConflict (fc_graph, box tail)))) => {
+                let new_tail = self.finalize_frame_locations(&bindings, tail);
+                Locals (uvars, Box::new(Ulocals (unspills, Box::new(Locate (bindings, Box::new(FrameConflict (fc_graph, Box::new(new_tail))))))))
+            }
+            e => e,
+        }
+    }
+    fn finalize_frame_locations(&self, bindings: &HashMap<String, String>, expr: Expr) -> Expr {
+        match expr {
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.finalize_frame_locations(bindings, pred);
+                let new_b1 = self.finalize_frame_locations(bindings, b1);
+                let new_b2 = self.finalize_frame_locations(bindings, b2);
+                return If ( Box::new(new_pred), Box::new(new_b1), Box::new(new_b2) );
+            }
+            Begin (exprs) => {
+                let new_exprs: Vec<Expr> = exprs.into_iter().map(|e| self.finalize_frame_locations(bindings, e)).collect();
+                return Begin (new_exprs);
+            }
+            Set (box e1, box e2) => {
+                let new_e1 = self.finalize_frame_locations(bindings, e1);
+                let new_e2 = self.finalize_frame_locations(bindings, e2);
+                if let Symbol (s1) = &new_e1 { if let Symbol (s2) = &new_e2 { if s1 == s2 {
+                    return Nop;
+                }}}
+                return Set (Box::new(new_e1), Box::new(new_e2));
+            },
+            Prim2 (op, box e1, box e2) => {
+                let new_e1 = self.finalize_frame_locations(bindings, e1);
+                let new_e2 = self.finalize_frame_locations(bindings, e2);
+                return Prim2 (op, Box::new(new_e1), Box::new(new_e2));
+            },
+            Funcall (name, mut args) => {
+                args = args.into_iter().map(|e| self.finalize_frame_locations(bindings, e)).collect();
+                match bindings.get(&name) {
+                    None => Funcall (name, args),
+                    Some (loc) => Funcall (loc.to_string(), args),
+                }
+            },
+            Symbol (s) => {
+                match bindings.get(&s) {
+                    None => Symbol (s),
+                    Some (loc) => Symbol (loc.to_string()),
+                }
+            },
+            e => e,
+        }
     }
 }
 
@@ -1137,7 +1232,7 @@ impl GenerateAsm {
 }
 
 
-pub fn compile_formater<T: std::fmt::Display>(s: &str, expr: &T) {
+pub fn compile_formatter<T: std::fmt::Display>(s: &str, expr: &T) {
     println!(">>> {}", s);
     println!("----------------------------");
     println!("{}", expr);
@@ -1166,17 +1261,21 @@ pub fn everybody_home(expr: &Expr) -> bool {
 
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseExpr{}.run(s);
-    compile_formater("ParseExpr", &expr);
+    compile_formatter("ParseExpr", &expr);
     let expr = UncoverFrameConflict{}.run(expr);
-    compile_formater("UncoverFrameConflict", &expr);
+    compile_formatter("UncoverFrameConflict", &expr);
     let expr = IntroduceAllocationForm{}.run(expr);
-    compile_formater("IntroduceAllocationForm", &expr);
+    compile_formatter("IntroduceAllocationForm", &expr);
     let expr = SelectInstructions{}.run(expr);
-    compile_formater("SelectInstructions", &expr);
+    compile_formatter("SelectInstructions", &expr);
     let expr = UncoverRegisterConflict{}.run(expr);
-    compile_formater("UncoverRegisterConflict", &expr);
+    compile_formatter("UncoverRegisterConflict", &expr);
     let expr = AssignRegister{}.run(expr);
-    compile_formater("AssignRegister", &expr);
+    compile_formatter("AssignRegister", &expr);
+    let expr = AssignFrame{}.run(expr);
+    compile_formatter("AssignFrame", &expr);
+    let expr = FinalizeFrameLocations{}.run(expr);
+    compile_formatter("FinalizeFrameLocations", &expr);
     // loop {
     //     expr = select_instrcution(expr)
 
