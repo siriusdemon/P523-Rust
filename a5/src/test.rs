@@ -161,3 +161,21 @@ fn compile7() {
     let r = run_helper(filename);
     assert_eq!(r.as_str(), "19\n");
 }
+
+
+#[test]
+fn compile8() {
+    let s = "
+    (letrec ()
+      (locals ()
+        (begin 
+          (set! rax 2)
+          (if (< 10 rax)
+              (set! rax 10)
+              (set! rax 2))
+          (r15))))";
+    let filename = "c8.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "2\n");
+}
