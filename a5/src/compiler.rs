@@ -583,47 +583,40 @@ impl AssignRegister {
         }
     }
 
+    fn find_low_degree(&self, conflict_graph: &ConflictGraph, vars: &HashSet<String>) -> (String, usize) {
+        let mut var = "";
+        let mut degree = usize::MAX;
+        for v in vars.iter() {
+            let list = conflict_graph.get(v).unwrap();
+            if list.len() < degree {
+                var = v;
+                degree = list.len();
+            }
+        }
+        return (var.to_string(), degree);
+    }
+
     // find the low-degree variable, if exists, return it. Else, spills a uvar.
     fn proposal_var(&self, uvars: &mut HashSet<String>, unspills: &mut HashSet<String>, conflict_graph: &ConflictGraph) -> String {
         let k = conflict_graph.len();
-        // find the low-degree variable in unspills
-        let mut uv = "";
-        let mut uvdegree = usize::MAX;
-        for u in unspills.iter() {
-            let list = conflict_graph.get(u).unwrap();
-            if list.len() < uvdegree {
-                uv = u;
-                uvdegree = list.len();
-            }
-        }
+
+        let (uv, uvdegree) = self.find_low_degree(conflict_graph, unspills);
         if uvdegree < k { 
-            let uv = uv.to_string();
             unspills.remove(&uv);
             return uv;
         }
-        // find the low-degree variable in uvars (spillable)
-        let mut sv = "";
-        let mut svdegree = usize::MAX;
-        for u in uvars.iter() {
-            let list = conflict_graph.get(u).unwrap();
-            if list.len() < uvdegree {
-                sv = u;
-                svdegree = list.len();
-            }
-        }
+ 
+        let (sv, svdegree) = self.find_low_degree(conflict_graph, uvars);
         if svdegree < k { 
-            let sv = sv.to_string();
             uvars.remove(&sv);
             return sv
         }
         
         // there is no a low degree variable, try to return a uvar
         if sv != "" {
-            let sv = sv.to_string();
             uvars.remove(&sv);
             return sv;
         }
-        let uv = uv.to_string();
         unspills.remove(&uv);
         return uv;
     }
