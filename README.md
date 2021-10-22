@@ -62,3 +62,5 @@ convince yourself that the following cases cover the (set a (op b c))
 (set a (op imm b))
 (set a (op b imm))
 ```
+
+move-relation optimize is skiped

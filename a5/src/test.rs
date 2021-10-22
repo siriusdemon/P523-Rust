@@ -136,3 +136,28 @@ fn compile6() {
     let r = run_helper(filename);
     assert_eq!(r.as_str(), "150\n");
 }
+
+#[test]
+fn compile7() {
+    let s = "
+    (letrec ()
+       (locals (b.2 g.7 c.3 d.4 e.5 a.1 f.6)
+         (begin
+           (set! a.1 1)
+           (set! b.2 2)
+           (set! c.3 a.1)
+           (set! d.4 4)
+           (set! e.5 5)
+           (set! f.6 b.2)
+           (set! f.6 (+ f.6 c.3))
+           (set! f.6 (+ f.6 d.4))
+           (set! f.6 (+ f.6 e.5))
+           (set! g.7 7)
+           (set! f.6 (+ f.6 g.7))
+           (set! rax f.6)
+           (r15 rax rcx rdx rbx rbp rsi rdi r8 r9 r10 r11 r12))))";
+    let filename = "c7.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "19\n");
+}
