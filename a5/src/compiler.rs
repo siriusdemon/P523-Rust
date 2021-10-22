@@ -545,35 +545,34 @@ impl AssignRegister {
     fn helper(&self, expr: Expr) -> Expr {
         match expr {
             Lambda (label, box body) => Lambda (label, Box::new(self.helper(body))),
-            Locals (mut uvars, box Ulocals (unspills, box Locate (bindings, box FrameConflict (fc_graph, box RegisterConflict (mut rc_graph, box tail))))) => {
+            Locals (mut uvars, box Ulocals (mut unspills, box Locate (bindings, box FrameConflict (fc_graph, box RegisterConflict (mut rc_graph, box tail))))) => {
                 let mut assigned = HashMap::new();
                 let mut spills = HashSet::new();
-                let mut backup = uvars.clone();
-                self.assign_registers(&mut uvars, rc_graph, &mut assigned, &mut spills);
+                let mut uvars_backup = uvars.clone();
+                let unspills_backup = unspills.clone();
+                self.assign_registers(&mut uvars, &mut unspills, rc_graph, &mut assigned, &mut spills);
                 if spills.is_empty() {
                     return Locate (assigned, Box::new(tail));
                 }
                 // assign fail, spill the uvars
-                spills.iter().for_each(|var| {backup.remove(var);});
-                Locals (backup, Box::new(Ulocals (unspills, 
+                spills.iter().for_each(|var| {uvars_backup.remove(var);});
+                Locals (uvars_backup, Box::new(Ulocals (unspills_backup, 
                     Box::new(Spills (spills, Box::new(Locate (bindings, 
                         Box::new(FrameConflict (fc_graph, Box::new(tail))))))))))
             }
             e => e,
         }
     }
-    fn assign_registers(&self, uvars: &mut HashSet<String>, mut conflict_graph: ConflictGraph, assigned: &mut HashMap<String, String>, spills: &mut HashSet<String>) {
+    fn assign_registers(&self, uvars: &mut HashSet<String>, unspills: &mut HashSet<String>, mut conflict_graph: ConflictGraph, assigned: &mut HashMap<String, String>, spills: &mut HashSet<String>) {
         if conflict_graph.len() == 0 { return; }
-        let v = self.proposal_var(uvars, &conflict_graph);
+        let v = self.proposal_var(uvars, unspills, &conflict_graph);
         let conflicts = conflict_graph.remove(&v).unwrap();
         // update conflict_graph and spillable
         for set in conflict_graph.values_mut() {
             set.remove(&v);
         }
-        // if v is a spillable, it will be removed, it not, it will stay in unlocals
-        uvars.remove(&v);
         // assign other variable firstly
-        self.assign_registers(uvars, conflict_graph, assigned, spills);
+        self.assign_registers(uvars, unspills, conflict_graph, assigned, spills);
         // assign the picked variables
         if let Some(reg) = self.find_available(conflicts, assigned) {
             assigned.insert(v, reg);
@@ -582,28 +581,44 @@ impl AssignRegister {
         }
     }
 
-    // find the low-degree variable, start from spillable variables
-    fn proposal_var(&self, uvars: &HashSet<String>, conflict_graph: &ConflictGraph) -> String {
-        let mut v = "";
-        let mut degree = usize::MAX;
-        if uvars.len() > 0 {
-            for u in uvars.iter() {
-                let list = conflict_graph.get(u).unwrap();
-                if list.len() < degree {
-                    v = u;
-                    degree = list.len();
-                }
-            }
-            return v.to_string();
-        }
-        // uvars is empty, means no spill variables
-        for (k, list) in conflict_graph {
-            if list.len() < degree {
-                v = k;
-                degree = list.len();
+    // find the low-degree variable, if exists, return it. Else, spills a uvar.
+    fn proposal_var(&self, uvars: &mut HashSet<String>, unspills: &mut HashSet<String>, conflict_graph: &ConflictGraph) -> String {
+        let k = conflict_graph.len();
+        // find the low-degree variable in unspills
+        let mut uv = "";
+        let mut uvdegree = usize::MAX;
+        for u in unspills.iter() {
+            let list = conflict_graph.get(u).unwrap();
+            if list.len() < uvdegree {
+                uv = u;
+                uvdegree = list.len();
             }
         }
-        return v.to_string();
+        if uvdegree < k { 
+            let uv = uv.to_string();
+            unspills.remove(&uv);
+            return uv;
+        }
+        // find the low-degree variable in uvars (spillable)
+        let mut sv = "";
+        let mut svdegree = usize::MAX;
+        for u in uvars.iter() {
+            let list = conflict_graph.get(u).unwrap();
+            if list.len() < uvdegree {
+                sv = u;
+                svdegree = list.len();
+            }
+        }
+        if svdegree < k { 
+            let sv = sv.to_string();
+            uvars.remove(&sv);
+            return sv
+        }
+        
+        // there is no a low degree variable, return a uvar
+        let sv = sv.to_string();
+        uvars.remove(&sv);
+        return sv;
     }
 
     fn find_available(&self, conflict: HashSet<String>, assigned: &HashMap<String, String>) -> Option<String> {
