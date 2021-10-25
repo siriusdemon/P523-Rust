@@ -230,11 +230,20 @@ impl Parser {
         assert!(lambda.token.as_str() == "lambda", 
             "Expect lambda, got {} at line {} col {}", lambda.token, lambda.line, lambda.col);
         let _args_left = self.remove_top();
-        let _args_right = self.remove_top();
-        let tail = self.parse_expr();
-        let _lambda_right = self.remove_top();
-        let _right = self.remove_top();
-        return Expr::Lambda(label, Box::new(tail));
+        let mut args = vec![];
+        while let Some(ref t) = self.top() {
+            if t.token.as_str() != ")" {
+                let arg = self.remove_top().unwrap().token;
+                args.push(arg);
+            } else {
+                let _args_right = self.remove_top();
+                let tail = self.parse_expr();
+                let _lambda_right = self.remove_top();
+                let _right = self.remove_top();
+                return Expr::Lambda(label, args, Box::new(tail));
+            }
+        } 
+        panic!("Parse Lambda, unexpected eof");
     }
 
     fn parse_funcall(&mut self) -> Expr {

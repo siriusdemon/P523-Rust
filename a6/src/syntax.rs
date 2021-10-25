@@ -32,7 +32,7 @@ pub enum Expr {
     Ulocals(HashSet<String>, Box<Expr>),
     Spills(HashSet<String>, Box<Expr>),
     Locate(HashMap<String, String>, Box<Expr>),
-    Lambda(String, Box<Expr>),
+    Lambda(String, Vec<String>, Box<Expr>),
     RegisterConflict(ConflictGraph, Box<Expr>),
     FrameConflict(ConflictGraph, Box<Expr>),
     Begin(Vec<Expr>),
@@ -69,8 +69,11 @@ impl fmt::Display for Expr {
                 let s = seqs_formatter("spills", spills.iter(), " ", tail);
                 write!(f, "{}", s)
             }
-            Lambda (label, box body) => {
-                let s = format!("({} (lambda () {}))", label, body);
+            Lambda (label, args, box body) => {
+                let seqs: Vec<String> = args.iter().map(|e| format!("{}", e)).collect();
+                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+                let seqs_s = seqs_ref.join(" ");
+                let s = format!("({} (lambda ({}) {}))", label, seqs_s, body);
                 write!(f, "{}", s)
             },
             Locate (bindings, box tail) => {

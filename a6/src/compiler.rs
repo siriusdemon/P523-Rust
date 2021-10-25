@@ -251,7 +251,7 @@ impl UncoverFrameConflict {
 
     fn helper(&self, expr: Expr) -> Expr {
         match expr {
-            Lambda (labl, box body) => Lambda (labl, Box::new(self.helper(body))),
+            Lambda (labl, args, box body) => Lambda (labl, args, Box::new(self.helper(body))),
             Locals (uvars, box tail) => {
                 let mut conflict_graph = ConflictGraph::new();
                 for uvar in uvars.iter() {
@@ -293,7 +293,7 @@ impl IntroduceAllocationForm {
 
     fn helper(&self, expr: Expr) -> Expr {
         match expr {
-            Lambda (labl, box body) => Lambda (labl, Box::new(self.helper(body))),
+            Lambda (labl, args, box body) => Lambda (labl, args, Box::new(self.helper(body))),
             Locals (uvars, box tail) => {
                 let new_tail = Ulocals (HashSet::new(), Box::new(Locate (HashMap::new(), Box::new(tail))));
                 return Locals (uvars, Box::new(new_tail));
@@ -316,7 +316,7 @@ impl SelectInstructions {
 
     fn helper(&self, expr: Expr) -> Expr {
         match expr {
-            Lambda (label, box body) => Lambda (label, Box::new(self.helper(body))),
+            Lambda (label, args, box body) => Lambda (label, args, Box::new(self.helper(body))),
             Locals (uvars, box Ulocals (mut unspills, box Locate (bindings, box FrameConflict (conflict_graph, box tail)))) => {
                 let new_tail = self.select_instruction_tail(&mut unspills, tail);
                 Locals (uvars, Box::new(Ulocals (unspills, Box::new(Locate (bindings, Box::new(FrameConflict (conflict_graph, Box::new(new_tail))))))))
@@ -500,7 +500,7 @@ impl UncoverRegisterConflict {
 
     fn helper(&self, expr: Expr) -> Expr {
         match expr {
-            Lambda (labl, box body) => Lambda (labl, Box::new(self.helper(body))),
+            Lambda (labl, args, box body) => Lambda (labl, args, Box::new(self.helper(body))),
             Locals (uvars, box Ulocals (unspills, box Locate (bindings, box FrameConflict (f_conflict_graph, box tail)))) => {
                 let mut r_conflict_graph = ConflictGraph::new();
                 for u in uvars.iter() {
@@ -544,7 +544,7 @@ impl AssignRegister {
     }
     fn helper(&self, expr: Expr) -> Expr {
         match expr {
-            Lambda (label, box body) => Lambda (label, Box::new(self.helper(body))),
+            Lambda (label, args, box body) => Lambda (label, args, Box::new(self.helper(body))),
             Locals (mut uvars, box Ulocals (mut unspills, box Locate (bindings, box FrameConflict (fc_graph, box RegisterConflict (mut rc_graph, box tail))))) => {
                 let mut assigned = HashMap::new();
                 let mut spills = HashSet::new();
@@ -653,7 +653,7 @@ impl AssignFrame {
     }
     fn helper(&self, expr: Expr) -> Expr {
         match expr {
-            Lambda (label, box body) => Lambda (label, Box::new(self.helper(body))),
+            Lambda (label, args, box body) => Lambda (label, args, Box::new(self.helper(body))),
             Locals (mut uvars, box Ulocals (unspills, box Spills (spills, box Locate (mut bindings, box FrameConflict (fc_graph, box tail))))) => {
                 self.assign_frame(spills, &mut bindings, &fc_graph);
                 Locals (uvars, Box::new(Ulocals (unspills, Box::new(Locate (bindings, Box::new(FrameConflict (fc_graph, Box::new(tail))))))))
@@ -701,7 +701,7 @@ impl FinalizeFrameLocations {
     }
     fn helper(&self, expr: Expr) -> Expr {
         match expr {
-            Lambda (label, box body) => Lambda (label, Box::new(self.helper(body))),
+            Lambda (label, args, box body) => Lambda (label, args, Box::new(self.helper(body))),
             Locals (uvars, box Ulocals (unspills, box Locate (bindings, box FrameConflict (fc_graph, box tail)))) => {
                 let new_tail = self.finalize_frame_locations(&bindings, tail);
                 Locals (uvars, Box::new(Ulocals (unspills, Box::new(Locate (bindings, Box::new(FrameConflict (fc_graph, Box::new(new_tail))))))))
@@ -765,7 +765,7 @@ impl DiscardCallLive {
 
     fn helper(&self, expr: Expr) -> Expr {
         match expr {
-            Lambda (label, box body) => Lambda (label, Box::new(self.helper(body))),
+            Lambda (label, args, box body) => Lambda (label, args, Box::new(self.helper(body))),
             Locate (bindings,  box tail)  =>  Locate (bindings, Box::new(self.discard_call_live(tail))),
             _ => unreachable!(),
         }
@@ -806,7 +806,7 @@ impl FinalizeLocations {
 
     fn remove_locate(&self, expr: Expr) -> Expr {
         match expr {
-            Lambda (label, box body) => Lambda (label, Box::new(self.remove_locate(body))),
+            Lambda (label, args, box body) => Lambda (label, args, Box::new(self.remove_locate(body))),
             Locate (bindings, box tail) => self.replace_uvar(&bindings, tail),
             e => e,
         }
@@ -880,9 +880,9 @@ impl ExposeBasicBlocks {
 
     fn lambda_helper(&self, e: Expr, new_lambdas: &mut Vec<Expr>) -> Expr {
         match e {
-            Lambda (labl, box tail) => {
+            Lambda (labl, args, box tail) => {
                 let new_tail = self.tail_helper(tail, new_lambdas);
-                return Lambda (labl, Box::new(new_tail));
+                return Lambda (labl, args, Box::new(new_tail));
             }
             e => panic!("Expect Lambda, get {}", e),
         }
@@ -973,7 +973,7 @@ impl ExposeBasicBlocks {
     }
 
     fn add_binding(&self, label: &str, tail: Expr, new_lambdas: &mut Vec<Expr>) {
-        let lambda = Lambda (label.to_string(), Box::new(tail));
+        let lambda = Lambda (label.to_string(), vec![], Box::new(tail));
         new_lambdas.push(lambda);        
     }
 
@@ -997,9 +997,9 @@ impl OptimizeJump {
                 // main block
                 let letrec_tail = self.reduce(tail, &head);
                 // lambda block
-                while let Some(Lambda(label, box tail)) = head {
+                while let Some(Lambda(label, args, box tail)) = head {
                     let new_tail = self.reduce(tail, &next);
-                    let new_lambda = Lambda (label, Box::new(new_tail));
+                    let new_lambda = Lambda (label, args, Box::new(new_tail));
                     new_lambdas.push(new_lambda);
                     head = next;
                     next = rest.next();
@@ -1011,7 +1011,7 @@ impl OptimizeJump {
     }
 
     fn reduce(&self, expr: Expr, next: &Option<Expr>) -> Expr {
-        if let Some(Lambda (next_lab, _tail)) = next.as_ref() {
+        if let Some(Lambda (next_lab, args, _tail)) = next.as_ref() {
             match expr {
                 Begin (exprs) => {
                     let new_exprs: Vec<Expr>= exprs.into_iter().map(|e| self.reduce(e, next)).collect();
@@ -1066,7 +1066,7 @@ impl FlattenProgram {
 
     fn flatten(&self, expr: Expr) -> Expr {
         match expr {
-            Lambda (label, box tail) => Lambda (label, Box::new(self.flatten(tail))),
+            Lambda (label, args, box tail) => Lambda (label, args, Box::new(self.flatten(tail))),
             Begin (exprs) => flatten_begin(Begin (exprs)),
             e => e,
         }
@@ -1098,7 +1098,7 @@ impl CompileToAsm {
                // other code blocks
                 for lambda in lambdas {
                     match lambda {
-                        Lambda (labl, box lambda_tail) => {
+                        Lambda (labl, args, box lambda_tail) => {
                             let codes: Vec<Asm> = self.tail_to_asm(lambda_tail);
                             let cfg = Cfg(labl, codes);
                             blocks.push(cfg);
@@ -1267,7 +1267,7 @@ pub fn everybody_home(expr: &Expr) -> bool {
     }
     fn lambda_home(expr: &Expr) -> bool {
         match expr {
-            Lambda (labl, box body) => body_home(body),
+            Lambda (labl, args, box body) => body_home(body),
             e => panic!("Invalid lambda expression {}", e),
         }
     }
