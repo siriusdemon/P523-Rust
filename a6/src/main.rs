@@ -20,5 +20,10 @@ fn main() -> std::io::Result<()> {
                                  0))
                            (+ c.3 5))))])
       (locals () (main$0 0 1)))";
+    let s = "
+    (letrec ()
+      (locals () 
+        (begin
+          (r15 (+ (* x.2 x.5) 7) (sra x.1 3)))))";
    compile(s, "t.s")
 }

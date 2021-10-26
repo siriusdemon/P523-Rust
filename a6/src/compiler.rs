@@ -90,7 +90,112 @@ impl ParseExpr {
     }
 }
 
+pub struct RemoveComplexOpera {}
+impl RemoveComplexOpera {
+    fn run(&self, expr: Expr) -> Expr {
+        match expr {
+            Letrec (lambdas, box body) => {
+                let new_lambdas: Vec<Expr> = lambdas.into_iter()
+                                                .map(|e| self.helper(e))
+                                                .collect();
+                let new_body = self.helper(body);
+                return Letrec (new_lambdas, Box::new(new_body));
+            }
+            _ => panic!("Invalid Program {}", expr),
+        }
+    } 
 
+    fn helper(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (labl, args, box body) => Lambda (labl, args, Box::new(self.helper(body))),
+            Locals (uvars, box tail) => Locals (uvars, Box::new(self.tail_helper(tail))),
+            e => e,
+        }
+    }
+
+    fn tail_helper(&self, tail: Expr) -> Expr {
+        match tail {
+            Funcall (labl, args) => {
+                let mut collector = vec![];
+                let new_args = args.into_iter().map(|x| self.simplify(x, &mut collector)).collect();
+                let new_funcall = Funcall (labl, new_args);
+                if collector.len() == 0 { 
+                    return new_funcall;
+                }
+                collector.push( new_funcall );
+                return flatten_begin(Begin (collector));
+            },
+            Prim2 (op, box e1, box e2) => {
+                let mut collector = vec![];    
+                let new_e1 = self.simplify(e1, &mut collector);
+                let new_e2 = self.simplify(e2, &mut collector);
+                let new_prim2 = Prim2 (op, Box::new(new_e1), Box::new(new_e2));
+                if collector.len() == 0 {
+                    return new_prim2;
+                }
+                collector.push(new_prim2);
+                return flatten_begin(Begin (collector));
+            },
+            Begin (mut exprs) => {
+                let tail = exprs.pop().unwrap();
+                let new_tail = self.tail_helper(tail);
+                exprs.push(new_tail);
+                return flatten_begin(Begin (exprs));
+            }
+            If (box pred, box b1, box b2) => {
+                let new_b1 = self.tail_helper(b1);
+                let new_b2 = self.tail_helper(b2);
+                let new_pred = self.pred_helper(pred);
+                return If (Box::new(new_pred), Box::new(new_b1), Box::new(new_b2));
+            }
+            e => e,
+        }
+    }
+
+    fn pred_helper(&self, pred: Expr) -> Expr {
+        match pred {
+            Prim2 (relop, box e1, box e2) => {
+                let mut collector = vec![];
+                let new_e1 = self.simplify(e1, &mut collector);
+                let new_e2 = self.simplify(e2, &mut collector);
+                let new_prim = Prim2 (relop, Box::new(new_e1), Box::new(new_e2));
+                if collector.len() == 0 { 
+                    return new_prim;
+                }
+                collector.push(new_prim);
+                return flatten_begin(Begin (collector));
+            }
+            If (box pred, box br1, box br2) => {
+                let new_br1 = self.pred_helper(br1);
+                let new_br2 = self.pred_helper(br2);
+                let new_pred = self.pred_helper(pred);
+                return If (Box::new(new_pred), Box::new(new_br1), Box::new(new_br2));
+            }
+            Begin (mut exprs) => {
+                let mut tail = exprs.pop().unwrap();
+                tail = self.pred_helper(tail);
+                exprs.push(tail);
+                return flatten_begin(Begin (exprs));
+            }
+            boolean => boolean,
+        }
+    }
+
+    fn simplify(&self, expr: Expr, collector: &mut Vec<Expr>) -> Expr {
+        match expr {
+            Prim2 (op, box e1, box e2) => {
+                let new_e1 = self.simplify(e1, collector);
+                let new_e2 = self.simplify(e2, collector);
+                let new_prim = Prim2 (op, Box::new(new_e1), Box::new(new_e2));
+                let tmp = gen_uvar();
+                let set = Set (Box::new(Symbol (tmp.clone())), Box::new(new_prim));
+                collector.push(set);
+                return Symbol (tmp);
+            }
+            e => e,
+        }
+    }
+}
 
 pub trait UncoverConflict {
     fn type_verify(&self, s: &str) -> bool;
@@ -1280,41 +1385,44 @@ pub fn everybody_home(expr: &Expr) -> bool {
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseExpr{}.run(s);
     compile_formatter("ParseExpr", &expr);
-    let expr = UncoverFrameConflict{}.run(expr);
-    compile_formatter("UncoverFrameConflict", &expr);
-    let mut expr = IntroduceAllocationForm{}.run(expr);
-    compile_formatter("IntroduceAllocationForm", &expr);
-    let mut loop_id = 1;
-    loop {
-        println!("The {}-th iteration", loop_id);
-        loop_id += 1;
-        expr = SelectInstructions{}.run(expr);
-        compile_formatter("SelectInstructions", &expr);
-        expr = UncoverRegisterConflict{}.run(expr);
-        compile_formatter("UncoverRegisterConflict", &expr);
-        expr = AssignRegister{}.run(expr);
-        compile_formatter("AssignRegister", &expr);
+    let expr = RemoveComplexOpera{}.run(expr);
+    compile_formatter("RemoveComplexOpera", &expr);
+    Ok(())
+    // let expr = UncoverFrameConflict{}.run(expr);
+    // compile_formatter("UncoverFrameConflict", &expr);
+    // let mut expr = IntroduceAllocationForm{}.run(expr);
+    // compile_formatter("IntroduceAllocationForm", &expr);
+    // let mut loop_id = 1;
+    // loop {
+    //     println!("The {}-th iteration", loop_id);
+    //     loop_id += 1;
+    //     expr = SelectInstructions{}.run(expr);
+    //     compile_formatter("SelectInstructions", &expr);
+    //     expr = UncoverRegisterConflict{}.run(expr);
+    //     compile_formatter("UncoverRegisterConflict", &expr);
+    //     expr = AssignRegister{}.run(expr);
+    //     compile_formatter("AssignRegister", &expr);
 
-        if everybody_home(&expr) {
-            break;
-        }
+    //     if everybody_home(&expr) {
+    //         break;
+    //     }
 
-        expr = AssignFrame{}.run(expr);
-        compile_formatter("AssignFrame", &expr);
-        expr = FinalizeFrameLocations{}.run(expr);
-        compile_formatter("FinalizeFrameLocations", &expr);
-    }
-    let expr = DiscardCallLive{}.run(expr);
-    compile_formatter("DiscardCallLive", &expr);
-    let expr = FinalizeLocations{}.run(expr);
-    compile_formatter("Finalizelocations", &expr);
-    let expr = ExposeBasicBlocks{}.run(expr);
-    compile_formatter("ExposeBasicBlocks", &expr);
-    let expr = OptimizeJump{}.run(expr);
-    compile_formatter("OptimizeJump", &expr);
-    let expr = FlattenProgram{}.run(expr);
-    compile_formatter("FlattenProgram", &expr);
-    let expr = CompileToAsm{}.run(expr);
-    compile_formatter("CompileToAsm", &expr);
-    return GenerateAsm{}.run(expr, filename)
+    //     expr = AssignFrame{}.run(expr);
+    //     compile_formatter("AssignFrame", &expr);
+    //     expr = FinalizeFrameLocations{}.run(expr);
+    //     compile_formatter("FinalizeFrameLocations", &expr);
+    // }
+    // let expr = DiscardCallLive{}.run(expr);
+    // compile_formatter("DiscardCallLive", &expr);
+    // let expr = FinalizeLocations{}.run(expr);
+    // compile_formatter("Finalizelocations", &expr);
+    // let expr = ExposeBasicBlocks{}.run(expr);
+    // compile_formatter("ExposeBasicBlocks", &expr);
+    // let expr = OptimizeJump{}.run(expr);
+    // compile_formatter("OptimizeJump", &expr);
+    // let expr = FlattenProgram{}.run(expr);
+    // compile_formatter("FlattenProgram", &expr);
+    // let expr = CompileToAsm{}.run(expr);
+    // compile_formatter("CompileToAsm", &expr);
+    // return GenerateAsm{}.run(expr, filename)
 }
