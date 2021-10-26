@@ -1,5 +1,5 @@
 # P523-Rust
-P523 Course in Rust
+P523 经典编译器课程的 Rust 引导
 
 ### 工具
 

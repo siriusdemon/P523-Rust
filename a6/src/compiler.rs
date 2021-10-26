@@ -197,6 +197,115 @@ impl RemoveComplexOpera {
     }
 }
 
+pub struct FlattenSet {}
+impl FlattenSet {
+    fn run(&self, expr: Expr) -> Expr {
+        match expr {
+            Letrec (lambdas, box body) => {
+                let new_lambdas: Vec<Expr> = lambdas.into_iter()
+                                                .map(|e| self.helper(e))
+                                                .collect();
+                let new_body = self.helper(body);
+                return Letrec (new_lambdas, Box::new(new_body));
+            }
+            _ => panic!("Invalid Program {}", expr),
+        }
+    } 
+
+    fn helper(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (labl, args, box body) => Lambda (labl, args, Box::new(self.helper(body))),
+            Locals (uvars, box tail) => Locals (uvars, Box::new(self.tail_helper(tail))),
+            e => e,
+        }
+    }
+
+    fn tail_helper(&self, tail: Expr) -> Expr {
+        match tail {
+            If (box pred, box b1, box b2) => {
+                let new_b1 = self.tail_helper(b1);
+                let new_b2 = self.tail_helper(b2);
+                let new_pred = self.pred_helper(pred);
+                return If (Box::new(new_pred), Box::new(new_b1), Box::new(new_b2));
+            }
+            Begin (mut exprs) => {
+                let mut tail = exprs.pop().unwrap();
+                tail = self.tail_helper(tail);
+                let mut new_exprs: Vec<Expr> = exprs.into_iter().map(|e| self.effect_helper(e)).collect();
+                new_exprs.push(tail);
+                return flatten_begin(Begin (new_exprs));
+            }
+            e => e,
+        }
+    }
+
+    fn pred_helper(&self, pred: Expr) -> Expr {
+        match pred {
+            If (box pred, box b1, box b2) => {
+                let new_b1 = self.pred_helper(b1);
+                let new_b2 = self.pred_helper(b2);
+                let new_pred = self.pred_helper(pred);
+                return If (Box::new(new_pred), Box::new(new_b1), Box::new(new_b2));
+            } 
+            Begin (mut exprs) => {
+                let mut tail = exprs.pop().unwrap();
+                tail = self.pred_helper(tail);
+                let mut new_exprs: Vec<_> = exprs.into_iter().map(|e| self.effect_helper(e)).collect();
+                new_exprs.push(tail);
+                return flatten_begin(Begin (new_exprs));
+            },
+            e => e,
+        }
+    }
+
+    fn effect_helper(&self, effect: Expr) -> Expr {
+        match effect {
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred);
+                let new_b1 = self.effect_helper(b1);
+                let new_b2 = self.effect_helper(b2);
+                return If (Box::new(new_pred), Box::new(new_b1), Box::new(new_b2));
+            }
+            Begin (mut exprs) => {
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e)).collect();
+                return flatten_begin(Begin (exprs));
+            }
+            Set (box Symbol (sym), box If (box pred, box b1, box b2)) => {
+                let new_b1 = self.simplify_set(sym.clone(), b1);
+                let new_b2 = self.simplify_set(sym, b2);
+                let new_pred = self.pred_helper(pred);
+                return If (Box::new(new_pred), Box::new(new_b1), Box::new(new_b2));
+            }
+            Set (box Symbol (sym), box Begin (mut exprs)) => {
+                let mut tail = exprs.pop().unwrap();
+                tail = self.simplify_set(sym, tail);
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e)).collect();
+                exprs.push(tail);
+                return flatten_begin(Begin (exprs));
+            }
+            e => e,
+        }
+    }
+
+    fn simplify_set(&self, sym: String, expr: Expr) -> Expr {
+        match expr {
+            If (box pred, box b1, box b2) => {
+                let new_b1 = self.simplify_set(sym.clone(), b1);
+                let new_b2 = self.simplify_set(sym.clone(), b2);
+                let new_pred = self.pred_helper(pred);
+                return If (Box::new(new_pred), Box::new(new_b1), Box::new(new_b2));
+            }
+            Begin (mut exprs) => {
+                let mut tail = exprs.pop().unwrap();
+                tail = self.simplify_set(sym, tail);
+                exprs.push(tail);
+                return flatten_begin(Begin (exprs));
+            }
+            simple => Set (Box::new(Symbol (sym)), Box::new(simple)),
+        }
+    }
+}
+
 pub trait UncoverConflict {
     fn type_verify(&self, s: &str) -> bool;
     fn uncover_conflict(&self, conflict_graph: ConflictGraph, tail: Expr) -> Expr;
@@ -1387,6 +1496,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("ParseExpr", &expr);
     let expr = RemoveComplexOpera{}.run(expr);
     compile_formatter("RemoveComplexOpera", &expr);
+    let expr = FlattenSet{}.run(expr);
+    compile_formatter("FlattenSet", &expr);
     Ok(())
     // let expr = UncoverFrameConflict{}.run(expr);
     // compile_formatter("UncoverFrameConflict", &expr);
