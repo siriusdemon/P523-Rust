@@ -1,19 +1,41 @@
 # P523-Rust
 P523 经典编译器课程的 Rust 引导
 
-### 工具
+
+P523 是一门经典的编译器课程，由 chez-scheme 的作者，R. Kent Dybvig 和他的助手教授。十年过去了，还有人想学习这门课程。
+
+![](hacker-news.png)
+
+这里是基于 P523 的一个 Rust 作业框架及引导，供爱好者取用。为了提振信心，可以读一读王垠的 [Chez Scheme 的传说](http://www.yinwang.org/blog-cn/2013/03/28/chez-scheme)。
+
+> Kent 的课程编译器有很好的结构，它被叫做“nanopass 编译器构架”。它的每一个 pass 只做很小的一件事情，然后这些 pass 被串联起来，形成一个完整的编译器。编译的过程，就是将输入程序经过一系列的变换之后，转化为机器代码。你也许发现了，这在本质上跟 LLVM 的构架是一样的。但是我可以告诉你，我们的课程编译器比 LLVM 干净利落许多，处于远远领先的地位。—— Chez Scheme 的传说
+
+
+### 初心
+
+见 [Rust-One-Piece](https://zhuanlan.zhihu.com/p/259594199) 初心部分。
+
+以及[倔强的程序员](https://zhuanlan.zhihu.com/p/165524567)
+
+
+### 准备
 
 + Rust Nightly
 + GCC
 
+Rust 起码读了一遍 the book 。
 
-### 流程
+### 通关流程
 
+0. 阅读 Kent 的讲义
 1. 定义 syntax
 2. 修改 parser
-3. 增减 test
-4. 修改 compiler
-5. 增减 test
+3. 修改 compiler
+4. 增减 test
+
+### week0
+
+编译框架解释。
 
 ### week1
 
