@@ -388,7 +388,7 @@ impl ImposeCallingConvention {
             // assign frame var later if any
             exprs.append(&mut fv_assign);
 
-            let new_tail = self.tail_helper(tail);
+            let new_tail = self.tail_helper(tail, rp);
             exprs.push(new_tail);
             return Locals (uvars, Box::new(flatten_begin(Begin (exprs))));
 
@@ -396,7 +396,7 @@ impl ImposeCallingConvention {
         unreachable!()
     }
 
-    fn tail_helper(&self, tail: Expr) -> Expr {
+    fn tail_helper(&self, tail: Expr, rp: &str) -> Expr {
         match tail {
             Funcall (labl, mut args) => {
                 let mut exprs = vec![];
@@ -419,6 +419,36 @@ impl ImposeCallingConvention {
                 let new_call = Funcall (labl, liveset);
                 exprs.push(new_call);
                 return Begin (exprs);
+            }
+            If (box pred, box b1, box b2) => {
+                let new_b1 = self.tail_helper(b1, rp);
+                let new_b2 = self.tail_helper(b2, rp);
+                return If (Box::new(pred), Box::new(new_b1), Box::new(new_b2));
+            }
+            Begin (mut exprs) => {
+                let mut tail = exprs.pop().unwrap();
+                tail = self.tail_helper(tail, rp);
+                exprs.push(tail);
+                return Begin (exprs);
+            }
+
+            Prim2 (op, box v1, box v2) => {
+                let expr = set2(Symbol (RETURN_VALUE_REGISTER.to_string()), op, v1, v2);
+                let args = vec![
+                    Symbol (FRAME_POINTER_REGISTER.to_string()),
+                    Symbol (RETURN_VALUE_REGISTER.to_string()),
+                ];
+                let jump = Funcall (get_rp(rp), args);
+                return Begin (vec![expr, jump]);
+            }
+            Symbol (e) => {
+                let expr = set1(Symbol (RETRUN_ADDRESS_REGISTER.to_string()), Symbol (e));
+                let args = vec![
+                    Symbol (FRAME_POINTER_REGISTER.to_string()),
+                    Symbol (RETURN_VALUE_REGISTER.to_string()),
+                ];
+                let jump = Funcall (get_rp(rp), args);
+                return Begin (vec![expr, jump]);
             }
             e => e,
         }
