@@ -11,7 +11,7 @@ use compiler::compile;
 
 fn main() -> std::io::Result<()> {
     let s = "
-    (letrec ([main$0 (lambda (a.1 b.2)
+    (letrec ([main$0 (lambda (a.1 b.2 d.5)
                        (locals (c.3)
                          (begin
                            (set! c.3 
@@ -19,6 +19,6 @@ fn main() -> std::io::Result<()> {
                                  1
                                  0))
                            (+ c.3 5))))])
-      (locals () (main$0 0 1)))";
+      (locals () (main$0 0 1 2)))";
    compile(s, "t.s")
 }

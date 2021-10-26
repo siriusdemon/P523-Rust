@@ -11,7 +11,7 @@ use crate::parser::{Scanner, Parser};
 use Expr::*;
 use Asm::*;
 
-// ---------------------- geenral predicate --------------------------------
+// ---------------------- register/frame --------------------------------
 const REGISTERS :[&str; 15] = ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
                                 "r8" , "r9" , "r10", "r11", "r12", "r13", "r14", "r15" ];
 const PARAMETER_REGISTERS :[&str; 2] = ["r8", "r9"];
@@ -34,11 +34,7 @@ const FRAME_VARS :[&str; 101] = [
     "fv91", "fv92", "fv93", "fv94", "fv95", "fv96", "fv97", "fv98", "fv99", "fv100",
 ];
 
-fn is_uvar(sym: &str) -> bool {
-    let v: Vec<&str> = sym.split('.').collect();
-    v.len() == 2 && v[0].len() > 0 && v[1].len() > 0
-}
-
+// ---------------------- general utils --------------------------------
 fn is_reg(reg: &str) -> bool {
     REGISTERS.contains(&reg)
 }
@@ -47,9 +43,18 @@ fn is_fv(s: &str) -> bool {
     s.starts_with("fv")
 }
 
+fn is_uvar(sym: &str) -> bool {
+    match sym.rfind('.') {
+        Some(index) => index > 0 && index < sym.len() - 1,
+        None => false,
+    }
+}
+
 fn is_label(sym: &str) -> bool {
-    let v: Vec<&str> = sym.split('$').collect();
-    v.len() == 2 && v[0].len() > 0 && v[1].len() > 0
+    match sym.rfind('$') {
+        Some(index) => index > 0 && index < sym.len() - 1,
+        None => false,
+    }
 }
 
 fn gensym(prefix: &str) -> String {
@@ -65,6 +70,10 @@ fn gen_label() -> String {
 
 fn gen_uvar() -> String {
     gensym("t.")
+}
+
+fn get_rp(name: &str) -> String {
+    format!("rp.{}", name)
 }
 
 fn flatten_begin(expr: Expr) -> Expr {
@@ -84,6 +93,20 @@ fn flatten_begin(expr: Expr) -> Expr {
     }
     return expr;
 }
+
+fn prim2(op: &str, v1: Expr, v2: Expr) -> Expr {
+    Prim2 (op.to_string(), Box::new(v1), Box::new(v2))
+}
+
+fn set2(dst: Expr, op: String, opv1: Expr, opv2: Expr) -> Expr {
+    let prim = Prim2 (op, Box::new(opv1), Box::new(opv2));
+    Set (Box::new(dst), Box::new(prim))
+}
+
+fn set1(dst: Expr, src: Expr) -> Expr {
+    Set (Box::new(dst), Box::new(src))
+}
+
 
 
 pub struct ParseExpr {}
@@ -326,7 +349,7 @@ impl ImposeCallingConvention {
                 let new_lambdas: Vec<Expr> = lambdas.into_iter()
                                                 .map(|e| self.lambda_helper(e))
                                                 .collect();
-                let new_body = self.body_helper(body, vec![]);
+                let new_body = self.body_helper(body, vec![], "letrec");
                 return Letrec (new_lambdas, Box::new(new_body));
             }
             _ => panic!("Invalid Program {}", expr),
@@ -335,48 +358,70 @@ impl ImposeCallingConvention {
 
     fn lambda_helper(&self, expr: Expr) -> Expr {
         if let Lambda (labl, args, box body) = expr {
-            let new_body = self.body_helper(body, args);
+            let new_body = self.body_helper(body, args, &labl);
             return Lambda (labl, vec![], Box::new(new_body));
         }
         unreachable!()
     }
 
-    fn body_helper(&self, expr: Expr, args: Vec<String>) -> Expr {
+    fn body_helper(&self, expr: Expr, mut args: Vec<String>, rp: &str) -> Expr {
         if let Locals (mut uvars, box tail) = expr {
-            uvars.insert("rp".to_string());
+            uvars.insert(get_rp(rp));
             for arg in args.iter() {
                 uvars.insert(arg.to_string());
             }
 
-            let mut set_exprs =  vec![];
-            set_exprs.push(Set (Box::new(Symbol ("rp".to_string())), Box::new(Symbol (RETRUN_ADDRESS_REGISTER.to_string()))));
+            let mut exprs =  vec![];
+            exprs.push(set1(Symbol (get_rp(rp)), Symbol (RETRUN_ADDRESS_REGISTER.to_string())));
 
-            if args.len() <= PARAMETER_REGISTERS.len() { 
-                for (arg, p) in args.into_iter().zip(PARAMETER_REGISTERS) {
-                    set_exprs.push(Set (Box::new(Symbol (arg)), Box::new(Symbol (p.to_string()))));
-                }
-            } else {
-                let mut args_iter = args.into_iter();
-                for i in 0..PARAMETER_REGISTERS.len() { 
-                    let a = args_iter.next().unwrap();
-                    set_exprs.push(Set (Box::new(Symbol (a)), Box::new(Symbol (PARAMETER_REGISTERS[i].to_string()))));
-                }
-                let mut frame_idx = 0;
-                while let Some(a) = args_iter.next() {
-                    set_exprs.push(Set (Box::new(Symbol (a)), Box::new(Symbol (FRAME_VARS[frame_idx].to_string()))));
-                    frame_idx += 1;
+            // spill the args into two parts, one in registers, another in frame vars
+            let mut fv_assign = vec![];
+            if args.len() > PARAMETER_REGISTERS.len() {
+                let fv_args = args.drain(PARAMETER_REGISTERS.len()..);
+                for (i, arg) in fv_args.into_iter().enumerate() {
+                    fv_assign.push(set1(Symbol (arg), Symbol (FRAME_VARS[i].to_string())));
                 }
             }
+            for (arg, reg) in args.into_iter().zip(PARAMETER_REGISTERS) {
+                exprs.push(set1(Symbol (arg), Symbol (reg.to_string())));
+            }
+            // assign frame var later if any
+            exprs.append(&mut fv_assign);
 
             let new_tail = self.tail_helper(tail);
-            return Locals (uvars, Box::new(new_tail));
+            exprs.push(new_tail);
+            return Locals (uvars, Box::new(flatten_begin(Begin (exprs))));
 
         }
         unreachable!()
     }
 
     fn tail_helper(&self, tail: Expr) -> Expr {
-        tail
+        match tail {
+            Funcall (labl, mut args) => {
+                let mut exprs = vec![];
+                let mut liveset = vec![
+                    Symbol (FRAME_POINTER_REGISTER.to_string()),
+                    Symbol (RETRUN_ADDRESS_REGISTER.to_string()),
+                ];
+                if args.len() > PARAMETER_REGISTERS.len() {
+                    let fv_args = args.drain(PARAMETER_REGISTERS.len()..);
+                    for (i, arg) in fv_args.into_iter().enumerate() {
+                        exprs.push(set1(Symbol (FRAME_VARS[i].to_string()), arg));
+                        liveset.push(Symbol (FRAME_VARS[i].to_string()));
+                    }
+                }
+                for (arg, reg) in args.into_iter().zip(PARAMETER_REGISTERS) {
+                    exprs.push(set1(Symbol (reg.to_string()), arg));
+                    liveset.push(Symbol (reg.to_string()));
+                }
+                exprs.push(set1(Symbol (RETRUN_ADDRESS_REGISTER.to_string()), Symbol (get_rp(&labl))));
+                let new_call = Funcall (labl, liveset);
+                exprs.push(new_call);
+                return Begin (exprs);
+            }
+            e => e,
+        }
     }
 }
 
@@ -637,12 +682,12 @@ impl SelectInstructions {
             Prim2 (relop, box Symbol (a), box Symbol (b)) => self.relop_fv_rewrite(relop, a, b, unspills),
             Prim2 (relop, box Int64 (i), box Symbol (sym)) => {
                 match relop.as_str() {
-                    ">" => self.prim2("<", Symbol (sym), Int64 (i)),
-                    ">=" => self.prim2("<=", Symbol (sym), Int64 (i)),
-                    "<" => self.prim2(">", Symbol (sym), Int64 (i)),
-                    "<=" => self.prim2(">=", Symbol (sym), Int64 (i)),
-                    "=" => self.prim2("=", Symbol (sym), Int64 (i)),
-                    op => panic!("Invalid relop {}", op),
+                    ">"  => prim2("<", Symbol (sym), Int64 (i)),
+                    ">=" => prim2("<=", Symbol (sym), Int64 (i)),
+                    "<"  => prim2(">", Symbol (sym), Int64 (i)),
+                    "<=" => prim2(">=", Symbol (sym), Int64 (i)),
+                    "="  => prim2("=", Symbol (sym), Int64 (i)),
+                    op   => panic!("Invalid relop {}", op),
                 }
             }
             If (box pred, box b1, box b2) => {
@@ -680,13 +725,13 @@ impl SelectInstructions {
                     return self.rewrite(a, op, Int64 (i), Symbol (b), unspills);
                 }
                 if self.is_swapable(&op) {
-                    return self.set2(Symbol (a), op, Symbol (b), Int64 (i));
+                    return set2(Symbol (a), op, Symbol (b), Int64 (i));
                 }
                 return self.rewrite(a, op, Int64 (i), Symbol (b), unspills);
             }
             Set (box Symbol (a), box Prim2 (op, box Symbol (b), box Int64 (i))) => {
                 if a == b {
-                    return self.set2(Symbol (a), op, Symbol (b), Int64 (i));
+                    return set2(Symbol (a), op, Symbol (b), Int64 (i));
                 }
                 return self.rewrite(a, op, Symbol (b), Int64 (i), unspills);
             }
@@ -707,19 +752,6 @@ impl SelectInstructions {
         }
     }
 
-    fn prim2(&self, op: &str, v1: Expr, v2: Expr) -> Expr {
-        Prim2 (op.to_string(), Box::new(v1), Box::new(v2))
-    }
-
-    fn set2(&self, dst: Expr, op: String, opv1: Expr, opv2: Expr) -> Expr {
-        let prim = Prim2 (op, Box::new(opv1), Box::new(opv2));
-        Set (Box::new(dst), Box::new(prim))
-    }
-
-    fn set1(&self, dst: Expr, src: Expr) -> Expr {
-        Set (Box::new(dst), Box::new(src))
-    }
-
     fn is_swapable(&self, op: &str) -> bool {
         match op {
             "+" | "*" | "logor" | "logand" => true,
@@ -732,7 +764,7 @@ impl SelectInstructions {
         if is_fv(&a) && is_fv(&b) {
             let new_uvar = gen_uvar();
             unspills.insert(new_uvar.clone());
-            let expr1 = self.set1(Symbol (new_uvar.clone()), Symbol (b));
+            let expr1 = set1(Symbol (new_uvar.clone()), Symbol (b));
             let expr2 = Prim2 (relop, Box::new(Symbol (a)), Box::new(Symbol (new_uvar)));
             return Begin (vec![expr1, expr2]);
         }
@@ -743,30 +775,30 @@ impl SelectInstructions {
         if is_fv(&a) && is_fv(&b) {
             let new_uvar = gen_uvar();
             unspills.insert(new_uvar.clone());
-            let expr1 = self.set1(Symbol (new_uvar.clone()), Symbol (b));
-            let expr2 = self.set1(Symbol (a), Symbol (new_uvar));
+            let expr1 = set1(Symbol (new_uvar.clone()), Symbol (b));
+            let expr2 = set1(Symbol (a), Symbol (new_uvar));
             return Begin (vec![expr1, expr2]);
         }
-        return self.set1(Symbol (a), Symbol (b));
+        return set1(Symbol (a), Symbol (b));
     }
 
     fn set2_fv_rewrite(&self, a: String, op: String, b: String, c: String, unspills: &mut HashSet<String>) -> Expr {
         if is_fv(&a) && is_fv(&c) {
             let new_uvar = gen_uvar();
             unspills.insert(new_uvar.clone());
-            let expr1 = self.set1(Symbol (new_uvar.clone()), Symbol (c));
-            let expr2 = self.set2(Symbol (a), op, Symbol (b), Symbol (new_uvar));
+            let expr1 = set1(Symbol (new_uvar.clone()), Symbol (c));
+            let expr2 = set2(Symbol (a), op, Symbol (b), Symbol (new_uvar));
             return Begin (vec![expr1, expr2]);
         } 
-        return self.set2(Symbol (a), op, Symbol (b), Symbol (c));
+        return set2(Symbol (a), op, Symbol (b), Symbol (c));
     }
     
     fn rewrite(&self, a: String, op: String, b: Expr, c: Expr, unspills: &mut HashSet<String>) -> Expr {
         let new_uvar = gen_uvar();
         unspills.insert(new_uvar.clone());
-        let expr1 = self.set1(Symbol (new_uvar.clone()), b);
-        let expr2 = self.set2(Symbol (new_uvar.clone()), op, Symbol (new_uvar.clone()), c);
-        let expr3 = self.set1(Symbol (a), Symbol (new_uvar));
+        let expr1 = set1(Symbol (new_uvar.clone()), b);
+        let expr2 = set2(Symbol (new_uvar.clone()), op, Symbol (new_uvar.clone()), c);
+        let expr3 = set1(Symbol (a), Symbol (new_uvar));
         return Begin (vec![expr1, expr2, expr3]);
     }
 }
