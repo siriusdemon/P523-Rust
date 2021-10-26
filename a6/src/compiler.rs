@@ -14,6 +14,13 @@ use Asm::*;
 // ---------------------- geenral predicate --------------------------------
 const REGISTERS :[&str; 15] = ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
                                 "r8" , "r9" , "r10", "r11", "r12", "r13", "r14", "r15" ];
+const PARAMETER_REGISTERS :[&str; 2] = ["r8", "r9"];
+const CALLER_SAVED_REGISTERS :[&str; 15] = REGISTERS;
+const FRAME_POINTER_REGISTER :&str = "rbp";
+const RETURN_VALUE_REGISTER :&str = "rax";
+const RETRUN_ADDRESS_REGISTER :&str = "r15";
+const ALLOCATION_REGISTER :&str = "rdx";
+
 const FRAME_VARS :[&str; 101] = [
     "fv0", "fv1", "fv2", "fv3", "fv4", "fv5", "fv6", "fv7", "fv8", "fv9", "fv10", 
     "fv11", "fv12", "fv13", "fv14", "fv15", "fv16", "fv17", "fv18", "fv19", "fv20", 
@@ -108,16 +115,19 @@ impl RemoveComplexOpera {
     fn helper(&self, expr: Expr) -> Expr {
         match expr {
             Lambda (labl, args, box body) => Lambda (labl, args, Box::new(self.helper(body))),
-            Locals (uvars, box tail) => Locals (uvars, Box::new(self.tail_helper(tail))),
+            Locals (mut uvars, box tail) => {
+                let new_tail = self.tail_helper(tail, &mut uvars);
+                return Locals (uvars, Box::new(new_tail));
+            }
             e => e,
         }
     }
 
-    fn tail_helper(&self, tail: Expr) -> Expr {
+    fn tail_helper(&self, tail: Expr, locals: &mut HashSet<String>) -> Expr {
         match tail {
             Funcall (labl, args) => {
                 let mut collector = vec![];
-                let new_args = args.into_iter().map(|x| self.simplify(x, &mut collector)).collect();
+                let new_args = args.into_iter().map(|x| self.simplify(x, &mut collector, locals)).collect();
                 let new_funcall = Funcall (labl, new_args);
                 if collector.len() == 0 { 
                     return new_funcall;
@@ -127,8 +137,8 @@ impl RemoveComplexOpera {
             },
             Prim2 (op, box e1, box e2) => {
                 let mut collector = vec![];    
-                let new_e1 = self.simplify(e1, &mut collector);
-                let new_e2 = self.simplify(e2, &mut collector);
+                let new_e1 = self.simplify(e1, &mut collector, locals);
+                let new_e2 = self.simplify(e2, &mut collector, locals);
                 let new_prim2 = Prim2 (op, Box::new(new_e1), Box::new(new_e2));
                 if collector.len() == 0 {
                     return new_prim2;
@@ -138,26 +148,26 @@ impl RemoveComplexOpera {
             },
             Begin (mut exprs) => {
                 let tail = exprs.pop().unwrap();
-                let new_tail = self.tail_helper(tail);
+                let new_tail = self.tail_helper(tail, locals);
                 exprs.push(new_tail);
                 return flatten_begin(Begin (exprs));
             }
             If (box pred, box b1, box b2) => {
-                let new_b1 = self.tail_helper(b1);
-                let new_b2 = self.tail_helper(b2);
-                let new_pred = self.pred_helper(pred);
+                let new_b1 = self.tail_helper(b1, locals);
+                let new_b2 = self.tail_helper(b2, locals);
+                let new_pred = self.pred_helper(pred, locals);
                 return If (Box::new(new_pred), Box::new(new_b1), Box::new(new_b2));
             }
             e => e,
         }
     }
 
-    fn pred_helper(&self, pred: Expr) -> Expr {
+    fn pred_helper(&self, pred: Expr, locals: &mut HashSet<String>) -> Expr {
         match pred {
             Prim2 (relop, box e1, box e2) => {
                 let mut collector = vec![];
-                let new_e1 = self.simplify(e1, &mut collector);
-                let new_e2 = self.simplify(e2, &mut collector);
+                let new_e1 = self.simplify(e1, &mut collector, locals);
+                let new_e2 = self.simplify(e2, &mut collector, locals);
                 let new_prim = Prim2 (relop, Box::new(new_e1), Box::new(new_e2));
                 if collector.len() == 0 { 
                     return new_prim;
@@ -166,14 +176,14 @@ impl RemoveComplexOpera {
                 return flatten_begin(Begin (collector));
             }
             If (box pred, box br1, box br2) => {
-                let new_br1 = self.pred_helper(br1);
-                let new_br2 = self.pred_helper(br2);
-                let new_pred = self.pred_helper(pred);
+                let new_br1 = self.pred_helper(br1, locals);
+                let new_br2 = self.pred_helper(br2, locals);
+                let new_pred = self.pred_helper(pred, locals);
                 return If (Box::new(new_pred), Box::new(new_br1), Box::new(new_br2));
             }
             Begin (mut exprs) => {
                 let mut tail = exprs.pop().unwrap();
-                tail = self.pred_helper(tail);
+                tail = self.pred_helper(tail, locals);
                 exprs.push(tail);
                 return flatten_begin(Begin (exprs));
             }
@@ -181,13 +191,14 @@ impl RemoveComplexOpera {
         }
     }
 
-    fn simplify(&self, expr: Expr, collector: &mut Vec<Expr>) -> Expr {
+    fn simplify(&self, expr: Expr, collector: &mut Vec<Expr>, locals: &mut HashSet<String>) -> Expr {
         match expr {
             Prim2 (op, box e1, box e2) => {
-                let new_e1 = self.simplify(e1, collector);
-                let new_e2 = self.simplify(e2, collector);
+                let new_e1 = self.simplify(e1, collector, locals);
+                let new_e2 = self.simplify(e2, collector, locals);
                 let new_prim = Prim2 (op, Box::new(new_e1), Box::new(new_e2));
                 let tmp = gen_uvar();
+                locals.insert(tmp.clone());
                 let set = Set (Box::new(Symbol (tmp.clone())), Box::new(new_prim));
                 collector.push(set);
                 return Symbol (tmp);

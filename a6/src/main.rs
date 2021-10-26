@@ -22,7 +22,7 @@ fn main() -> std::io::Result<()> {
     //   (locals () (main$0 0 1)))";
     let s = "
     (letrec ()
-      (locals () 
+      (locals (y.2 x.2 x.5 x.1) 
         (begin
           (set! y.2 (begin 10))
           (r15 (+ (* x.2 x.5) 7) (sra x.1 3)))))";
