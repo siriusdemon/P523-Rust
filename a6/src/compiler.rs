@@ -317,6 +317,69 @@ impl FlattenSet {
     }
 }
 
+
+pub struct ImposeCallingConvention {}
+impl ImposeCallingConvention {
+    fn run(&self, expr: Expr) -> Expr {
+        match expr {
+            Letrec (lambdas, box body) => {
+                let new_lambdas: Vec<Expr> = lambdas.into_iter()
+                                                .map(|e| self.lambda_helper(e))
+                                                .collect();
+                let new_body = self.body_helper(body, vec![]);
+                return Letrec (new_lambdas, Box::new(new_body));
+            }
+            _ => panic!("Invalid Program {}", expr),
+        }
+    } 
+
+    fn lambda_helper(&self, expr: Expr) -> Expr {
+        if let Lambda (labl, args, box body) = expr {
+            let new_body = self.body_helper(body, args);
+            return Lambda (labl, vec![], Box::new(new_body));
+        }
+        unreachable!()
+    }
+
+    fn body_helper(&self, expr: Expr, args: Vec<String>) -> Expr {
+        if let Locals (mut uvars, box tail) = expr {
+            uvars.insert("rp".to_string());
+            for arg in args.iter() {
+                uvars.insert(arg.to_string());
+            }
+
+            let mut set_exprs =  vec![];
+            set_exprs.push(Set (Box::new(Symbol ("rp".to_string())), Box::new(Symbol (RETRUN_ADDRESS_REGISTER.to_string()))));
+
+            if args.len() <= PARAMETER_REGISTERS.len() { 
+                for (arg, p) in args.into_iter().zip(PARAMETER_REGISTERS) {
+                    set_exprs.push(Set (Box::new(Symbol (arg)), Box::new(Symbol (p.to_string()))));
+                }
+            } else {
+                let mut args_iter = args.into_iter();
+                for i in 0..PARAMETER_REGISTERS.len() { 
+                    let a = args_iter.next().unwrap();
+                    set_exprs.push(Set (Box::new(Symbol (a)), Box::new(Symbol (PARAMETER_REGISTERS[i].to_string()))));
+                }
+                let mut frame_idx = 0;
+                while let Some(a) = args_iter.next() {
+                    set_exprs.push(Set (Box::new(Symbol (a)), Box::new(Symbol (FRAME_VARS[frame_idx].to_string()))));
+                    frame_idx += 1;
+                }
+            }
+
+            let new_tail = self.tail_helper(tail);
+            return Locals (uvars, Box::new(new_tail));
+
+        }
+        unreachable!()
+    }
+
+    fn tail_helper(&self, tail: Expr) -> Expr {
+        tail
+    }
+}
+
 pub trait UncoverConflict {
     fn type_verify(&self, s: &str) -> bool;
     fn uncover_conflict(&self, conflict_graph: ConflictGraph, tail: Expr) -> Expr;
@@ -1509,6 +1572,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("RemoveComplexOpera", &expr);
     let expr = FlattenSet{}.run(expr);
     compile_formatter("FlattenSet", &expr);
+    let expr = ImposeCallingConvention{}.run(expr);
+    compile_formatter("ImposeCallingConvention", &expr);
     Ok(())
     // let expr = UncoverFrameConflict{}.run(expr);
     // compile_formatter("UncoverFrameConflict", &expr);
