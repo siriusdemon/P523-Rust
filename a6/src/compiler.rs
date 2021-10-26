@@ -34,6 +34,7 @@ const FRAME_VARS :[&str; 101] = [
     "fv91", "fv92", "fv93", "fv94", "fv95", "fv96", "fv97", "fv98", "fv99", "fv100",
 ];
 
+const ALIGN_SHIFT: usize = 3;
 // ---------------------- general utils --------------------------------
 fn is_reg(reg: &str) -> bool {
     REGISTERS.contains(&reg)
@@ -916,8 +917,6 @@ impl AssignRegister {
     fn assign_registers(&self, uvars: &mut HashSet<String>, unspills: &mut HashSet<String>, mut conflict_graph: ConflictGraph, assigned: &mut HashMap<String, String>, spills: &mut HashSet<String>) {
         if conflict_graph.len() == 0 { return; }
         let v = self.proposal_var(uvars, unspills, &conflict_graph);
-        println!("variables {}", v);
-        println!("conflict_graph {:?}", conflict_graph);
         let conflicts = conflict_graph.remove(&v).unwrap();
         // update conflict_graph and spillable
         for set in conflict_graph.values_mut() {
@@ -1497,7 +1496,8 @@ impl CompileToAsm {
     fn fv_to_deref(&self, fv :&str) -> Asm {
         let v :Vec<&str> = fv.split("fv").collect();
         let index :i64 = v[1].parse().unwrap();
-        return Deref (Box::new(RBP), index * 8);
+        let fp = self.string_to_reg(FRAME_POINTER_REGISTER);
+        return Deref (Box::new(fp), index << ALIGN_SHIFT);
     }
 
     fn string_to_reg(&self, s: &str) -> Asm {
@@ -1636,42 +1636,41 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("FlattenSet", &expr);
     let expr = ImposeCallingConvention{}.run(expr);
     compile_formatter("ImposeCallingConvention", &expr);
-    Ok(())
-    // let expr = UncoverFrameConflict{}.run(expr);
-    // compile_formatter("UncoverFrameConflict", &expr);
-    // let mut expr = IntroduceAllocationForm{}.run(expr);
-    // compile_formatter("IntroduceAllocationForm", &expr);
-    // let mut loop_id = 1;
-    // loop {
-    //     println!("The {}-th iteration", loop_id);
-    //     loop_id += 1;
-    //     expr = SelectInstructions{}.run(expr);
-    //     compile_formatter("SelectInstructions", &expr);
-    //     expr = UncoverRegisterConflict{}.run(expr);
-    //     compile_formatter("UncoverRegisterConflict", &expr);
-    //     expr = AssignRegister{}.run(expr);
-    //     compile_formatter("AssignRegister", &expr);
+    let expr = UncoverFrameConflict{}.run(expr);
+    compile_formatter("UncoverFrameConflict", &expr);
+    let mut expr = IntroduceAllocationForm{}.run(expr);
+    compile_formatter("IntroduceAllocationForm", &expr);
+    let mut loop_id = 1;
+    loop {
+        println!("The {}-th iteration", loop_id);
+        loop_id += 1;
+        expr = SelectInstructions{}.run(expr);
+        compile_formatter("SelectInstructions", &expr);
+        expr = UncoverRegisterConflict{}.run(expr);
+        compile_formatter("UncoverRegisterConflict", &expr);
+        expr = AssignRegister{}.run(expr);
+        compile_formatter("AssignRegister", &expr);
 
-    //     if everybody_home(&expr) {
-    //         break;
-    //     }
+        if everybody_home(&expr) {
+            break;
+        }
 
-    //     expr = AssignFrame{}.run(expr);
-    //     compile_formatter("AssignFrame", &expr);
-    //     expr = FinalizeFrameLocations{}.run(expr);
-    //     compile_formatter("FinalizeFrameLocations", &expr);
-    // }
-    // let expr = DiscardCallLive{}.run(expr);
-    // compile_formatter("DiscardCallLive", &expr);
-    // let expr = FinalizeLocations{}.run(expr);
-    // compile_formatter("Finalizelocations", &expr);
-    // let expr = ExposeBasicBlocks{}.run(expr);
-    // compile_formatter("ExposeBasicBlocks", &expr);
-    // let expr = OptimizeJump{}.run(expr);
-    // compile_formatter("OptimizeJump", &expr);
-    // let expr = FlattenProgram{}.run(expr);
-    // compile_formatter("FlattenProgram", &expr);
-    // let expr = CompileToAsm{}.run(expr);
-    // compile_formatter("CompileToAsm", &expr);
-    // return GenerateAsm{}.run(expr, filename)
+        expr = AssignFrame{}.run(expr);
+        compile_formatter("AssignFrame", &expr);
+        expr = FinalizeFrameLocations{}.run(expr);
+        compile_formatter("FinalizeFrameLocations", &expr);
+    }
+    let expr = DiscardCallLive{}.run(expr);
+    compile_formatter("DiscardCallLive", &expr);
+    let expr = FinalizeLocations{}.run(expr);
+    compile_formatter("Finalizelocations", &expr);
+    let expr = ExposeBasicBlocks{}.run(expr);
+    compile_formatter("ExposeBasicBlocks", &expr);
+    let expr = OptimizeJump{}.run(expr);
+    compile_formatter("OptimizeJump", &expr);
+    let expr = FlattenProgram{}.run(expr);
+    compile_formatter("FlattenProgram", &expr);
+    let expr = CompileToAsm{}.run(expr);
+    compile_formatter("CompileToAsm", &expr);
+    return GenerateAsm{}.run(expr, filename)
 }

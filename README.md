@@ -64,3 +64,7 @@ convince yourself that the following cases cover the (set a (op b c))
 ```
 
 move-relation optimization is skiped
+
+### week6
+
+since we have no expose-frame-variable at all, we need to modify the CompileToAsm, fv_to_deref

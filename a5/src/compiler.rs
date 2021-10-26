@@ -566,8 +566,6 @@ impl AssignRegister {
     fn assign_registers(&self, uvars: &mut HashSet<String>, unspills: &mut HashSet<String>, mut conflict_graph: ConflictGraph, assigned: &mut HashMap<String, String>, spills: &mut HashSet<String>) {
         if conflict_graph.len() == 0 { return; }
         let v = self.proposal_var(uvars, unspills, &conflict_graph);
-        println!("variables {}", v);
-        println!("conflict_graph {:?}", conflict_graph);
         let conflicts = conflict_graph.remove(&v).unwrap();
         // update conflict_graph and spillable
         for set in conflict_graph.values_mut() {
