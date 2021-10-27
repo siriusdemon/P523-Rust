@@ -35,5 +35,5 @@ fn compile1() {
     let filename = "c1.s";
     compile(s, filename);
     let r = run_helper(filename);
-    assert_eq!(r.as_str(), "2\n");
+    assert_eq!(r.as_str(), "6\n");
 }

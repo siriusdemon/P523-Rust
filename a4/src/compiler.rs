@@ -112,30 +112,30 @@ impl UncoverRegisterConflict {
         }   
     }
 
-    fn pred_liveset(&self, pred: &Expr, true_liveset: HashSet<String>, fliveset: HashSet<String>, conflict_graph: &mut ConflictGraph) -> HashSet<String> {
+    fn pred_liveset(&self, pred: &Expr, tliveset: HashSet<String>, fliveset: HashSet<String>, conflict_graph: &mut ConflictGraph) -> HashSet<String> {
         match pred {
-            Bool (true) => true_liveset,
+            Bool (true) => tliveset,
             Bool (false) => fliveset,
             If (box pred, box b1, box b2) => {
-                let new_true_liveset = self.pred_liveset(b1, true_liveset.clone(), fliveset.clone(), conflict_graph);
-                let new_fliveset = self.pred_liveset(b2, true_liveset, fliveset, conflict_graph);
-                return self.pred_liveset(pred, new_true_liveset, new_fliveset, conflict_graph);
+                let new_tliveset = self.pred_liveset(b1, tliveset.clone(), fliveset.clone(), conflict_graph);
+                let new_fliveset = self.pred_liveset(b2, tliveset, fliveset, conflict_graph);
+                return self.pred_liveset(pred, new_tliveset, new_fliveset, conflict_graph);
             }
             Begin (exprs) => {
                 let exprs_slice = exprs.as_slice();
                 let last = exprs.len() - 1;
-                let mut liveset = self.pred_liveset(&exprs_slice[last], true_liveset, fliveset, conflict_graph);
+                let mut liveset = self.pred_liveset(&exprs_slice[last], tliveset, fliveset, conflict_graph);
                 for i in 0..last {
                     liveset = self.effect_liveset(&exprs_slice[i], liveset, conflict_graph); 
                 }
                 return liveset;
             }
             Prim2 (relop, box v1, box v2 ) => {
-                let mut liveset: HashSet<_> = self.liveset_union(true_liveset, fliveset);
-                if let Symbol(s) = v1 { if is_uvar(s) {
+                let mut liveset: HashSet<_> = self.liveset_union(tliveset, fliveset);
+                if let Symbol(s) = v1 { if is_uvar(s) || is_reg(s) {
                     liveset.insert(s.to_string());    
                 }}
-                if let Symbol(s) = v2 { if is_uvar(s) {
+                if let Symbol(s) = v2 { if is_uvar(s) || is_reg(s) {
                     liveset.insert(s.to_string());
                 }}
                 return liveset;
@@ -147,13 +147,13 @@ impl UncoverRegisterConflict {
 
     fn effect_liveset(&self, effect: &Expr, mut liveset: HashSet<String>, conflict_graph: &mut ConflictGraph) -> HashSet<String> {
         match effect {
-            &Nop => liveset,
+            Nop => liveset,
             If (box Bool(true), box b1, _) => self.effect_liveset(b1, liveset, conflict_graph),
             If (box Bool(false), _, box b2) => self.effect_liveset(b2, liveset, conflict_graph),
             If (box pred, box b1, box b2) => {
-                let true_liveset = self.effect_liveset(b1, liveset.clone(), conflict_graph);
+                let tliveset = self.effect_liveset(b1, liveset.clone(), conflict_graph);
                 let fliveset = self.effect_liveset(b2, liveset, conflict_graph);
-                let liveset = self.liveset_union(true_liveset, fliveset);
+                let liveset = self.liveset_union(tliveset, fliveset);
                 return self.effect_liveset(pred, liveset, conflict_graph);
             }
             Begin (exprs) => {
