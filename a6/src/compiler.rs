@@ -74,7 +74,7 @@ fn gen_uvar() -> String {
 }
 
 fn get_rp(name: &str) -> String {
-    format!("rp.{}", name)
+    format!("rp.{}", name.replace("$", ""))
 }
 
 fn flatten_begin(expr: Expr) -> Expr {
@@ -416,7 +416,7 @@ impl ImposeCallingConvention {
                     exprs.push(set1(Symbol (reg.to_string()), arg));
                     liveset.push(Symbol (reg.to_string()));
                 }
-                exprs.push(set1(Symbol (RETRUN_ADDRESS_REGISTER.to_string()), Symbol (get_rp(&labl))));
+                exprs.push(set1(Symbol (RETRUN_ADDRESS_REGISTER.to_string()), Symbol (get_rp(rp))));
                 let new_call = Funcall (labl, liveset);
                 exprs.push(new_call);
                 return Begin (exprs);
@@ -1439,7 +1439,7 @@ impl CompileToAsm {
                     Push (Box::new(R14)),
                     Push (Box::new(R15)),
                     self.op2("movq", RDI, RBP),
-                    self.op2("leaq", DerefLabel(Box::new(RIP), "_scheme_exit".to_string()), R15),
+                    self.op2("leaq", DerefLabel(Box::new(RIP), "_scheme_exit".to_string()), self.string_to_reg(RETRUN_ADDRESS_REGISTER)),
                 ];
                 codes.append(&mut self.tail_to_asm(tail));
                 let cfg = Cfg(label, codes);
