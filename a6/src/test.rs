@@ -37,3 +37,20 @@ fn compile1() {
     let r = run_helper(filename);
     assert_eq!(r.as_str(), "6\n");
 }
+
+#[test]
+fn compile2() {
+    let s = " 
+    (letrec ()
+      (locals (a.1)
+        (begin
+          (set! a.1 10)
+          (if (< 7 a.1)
+              (nop)
+              (set! a.1 (+ a.1 a.1)))
+          a.1)))";
+    let filename = "c2.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "10\n");
+}

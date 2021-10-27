@@ -443,7 +443,7 @@ impl ImposeCallingConvention {
                 return Begin (vec![expr, jump]);
             }
             Symbol (e) => {
-                let expr = set1(Symbol (RETRUN_ADDRESS_REGISTER.to_string()), Symbol (e));
+                let expr = set1(Symbol (RETURN_VALUE_REGISTER.to_string()), Symbol (e));
                 let args = vec![
                     Symbol (FRAME_POINTER_REGISTER.to_string()),
                     Symbol (RETURN_VALUE_REGISTER.to_string()),
