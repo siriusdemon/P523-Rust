@@ -505,7 +505,7 @@ pub trait UncoverConflict {
                 let exprs_slice = exprs.as_slice();
                 let last = exprs.len() - 1;
                 let mut liveset = self.pred_liveset(&exprs_slice[last], tliveset, fliveset, conflict_graph);
-                for i in 0..last {
+                for i in (0..last).rev() {
                     liveset = self.effect_liveset(&exprs_slice[i], liveset, conflict_graph); 
                 }
                 return liveset;
@@ -533,20 +533,17 @@ pub trait UncoverConflict {
             If (box pred, box b1, box b2) => {
                 let tliveset = self.effect_liveset(b1, liveset.clone(), conflict_graph);
                 let fliveset = self.effect_liveset(b2, liveset, conflict_graph);
-                let liveset = self.liveset_union(tliveset, fliveset);
-                return self.effect_liveset(pred, liveset, conflict_graph);
+                return self.pred_liveset(pred, tliveset, fliveset, conflict_graph);
             }
             Begin (exprs) => {
-                for e in exprs {
+                for e in exprs.iter().rev() {
                     liveset = self.effect_liveset(e, liveset, conflict_graph);
                 }
                 return liveset;
             }
-            Set (box v1, box Prim2 (op, box v2, box v3)) => {
-                if let Symbol(s) = v1 { 
-                    liveset.remove(s);
-                    self.record_conflicts(s, "", &liveset, conflict_graph);
-                }
+            Set (box Symbol(s), box Prim2 (op, box v2, box v3)) => {
+                liveset.remove(s);
+                self.record_conflicts(s, "", &liveset, conflict_graph);
                 if let Symbol(s) = v2 { if is_uvar(s) || self.type_verify(s) {
                     liveset.insert(s.to_string());
                 }}
@@ -563,11 +560,9 @@ pub trait UncoverConflict {
                 }
                 return liveset;
             }
-            Set (box v1, box v2) => {
-                if let Symbol(s) = v1 { 
-                    liveset.remove(s);
-                    self.record_conflicts(s, "", &liveset, conflict_graph);
-                }
+            Set (box Symbol(s), box v2) => {
+                liveset.remove(s);
+                self.record_conflicts(s, "", &liveset, conflict_graph);
                 return liveset;
             }
             e => liveset,
