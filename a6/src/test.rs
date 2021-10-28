@@ -54,3 +54,24 @@ fn compile2() {
     let r = run_helper(filename);
     assert_eq!(r.as_str(), "10\n");
 }
+
+#[test]
+fn compile3() {
+    let s = "
+    (letrec ()
+      (locals (n.1 a.2 b.3 c.4)
+        (begin
+          (set! n.1 1)
+          (begin
+            (set! a.2 2)
+            (begin
+              (set! b.3 3)
+              (set! n.1 (+ n.1 (if (= (+ n.1 b.3) b.3) 5 10)))
+              (set! n.1 (+ n.1 b.3)))
+            (set! n.1 (+ n.1 a.2)))
+          (+ n.1 n.1))))";
+    let filename = "c3.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "32\n");
+}

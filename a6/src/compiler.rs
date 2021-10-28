@@ -87,7 +87,10 @@ fn flatten_begin(expr: Expr) -> Expr {
             }
         }
     }
-    if let Begin (exprs) = expr {
+    if let Begin (mut exprs) = expr {
+        if exprs.len() == 1 { 
+            return exprs.pop().unwrap();
+        }
         let mut new_exprs = vec![];
         helper(exprs, &mut new_exprs);
         return Begin (new_exprs); 
@@ -153,9 +156,6 @@ impl RemoveComplexOpera {
                 let mut collector = vec![];
                 let new_args = args.into_iter().map(|x| self.simplify(x, &mut collector, locals)).collect();
                 let new_funcall = Funcall (labl, new_args);
-                if collector.len() == 0 { 
-                    return new_funcall;
-                }
                 collector.push( new_funcall );
                 return flatten_begin(Begin (collector));
             },
@@ -164,15 +164,13 @@ impl RemoveComplexOpera {
                 let new_e1 = self.simplify(e1, &mut collector, locals);
                 let new_e2 = self.simplify(e2, &mut collector, locals);
                 let new_prim2 = Prim2 (op, Box::new(new_e1), Box::new(new_e2));
-                if collector.len() == 0 {
-                    return new_prim2;
-                }
                 collector.push(new_prim2);
                 return flatten_begin(Begin (collector));
             },
             Begin (mut exprs) => {
                 let tail = exprs.pop().unwrap();
                 let new_tail = self.tail_helper(tail, locals);
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e, locals)).collect();
                 exprs.push(new_tail);
                 return flatten_begin(Begin (exprs));
             }
@@ -193,9 +191,6 @@ impl RemoveComplexOpera {
                 let new_e1 = self.simplify(e1, &mut collector, locals);
                 let new_e2 = self.simplify(e2, &mut collector, locals);
                 let new_prim = Prim2 (relop, Box::new(new_e1), Box::new(new_e2));
-                if collector.len() == 0 { 
-                    return new_prim;
-                }
                 collector.push(new_prim);
                 return flatten_begin(Begin (collector));
             }
@@ -208,10 +203,34 @@ impl RemoveComplexOpera {
             Begin (mut exprs) => {
                 let mut tail = exprs.pop().unwrap();
                 tail = self.pred_helper(tail, locals);
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e, locals)).collect();
                 exprs.push(tail);
                 return flatten_begin(Begin (exprs));
             }
             boolean => boolean,
+        }
+    }
+
+    fn effect_helper(&self, effect: Expr, locals: &mut HashSet<String>) -> Expr {
+        match effect {
+            Set (box sym, box v) => {
+                let mut collector = vec![];
+                let new_v = self.simplify(v, &mut collector, locals);
+                let new_set = set1(sym, new_v);
+                collector.push(new_set);
+                return flatten_begin(Begin (collector));
+            }
+            If (box pred, box br1, box br2) => {
+                let new_br1 = self.effect_helper(br1, locals);
+                let new_br2 = self.effect_helper(br2, locals);
+                let new_pred = self.pred_helper(pred, locals);
+                return If (Box::new(new_pred), Box::new(new_br1), Box::new(new_br2));
+            }
+            Begin (exprs) => {
+                let new_exprs: Vec<Expr> = exprs.into_iter().map(|e| self.effect_helper(e, locals)).collect();
+                return flatten_begin(Begin (new_exprs));
+            }
+            e => e,
         }
     }
 
@@ -226,6 +245,27 @@ impl RemoveComplexOpera {
                 let set = Set (Box::new(Symbol (tmp.clone())), Box::new(new_prim));
                 collector.push(set);
                 return Symbol (tmp);
+            }
+            If (box pred, box br1, box br2) => {
+                let new_pred = self.pred_helper(pred, locals);
+                let mut br1_collector = vec![];
+                let mut new_br1 = self.simplify(br1, &mut br1_collector, locals);
+                br1_collector.push(new_br1);
+                new_br1 = Begin (br1_collector);
+                let mut br2_collector = vec![];
+                let mut new_br2 = self.simplify(br2, &mut br2_collector, locals);
+                br2_collector.push(new_br2);
+                new_br2 = Begin (br2_collector);
+                return If (Box::new(new_pred), Box::new(new_br1), Box::new(new_br2));
+
+            }
+            Begin (mut exprs) => {
+                let mut tail = exprs.pop().unwrap();
+                let mut collector = vec![];
+                tail = self.simplify(tail, &mut collector, locals);
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e, locals)).collect();
+                exprs.push(tail);
+                return flatten_begin(Begin (exprs));
             }
             e => e,
         }

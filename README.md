@@ -68,3 +68,21 @@ move-relation optimization is skiped
 ### week6
 
 since we have no expose-frame-variable at all, we need to modify the CompileToAsm, fv_to_deref
+
+
+### 
+
+士不可以不弘毅，任重而道远。仁以为己任，不亦重乎？死而后已，不亦远乎？
+
+如果海洋注定要决堤，就让所有的苦水都注入我心中；如果陆地注定要上升，就让人类重新选择生存的峰顶。
+
+愿我走过的苦难你不必经历，愿我已有的幸福你触手可及。
+
+理想开花，桃李要结甜果；理想抽芽，榆杨会有浓荫。请乘理想之马，挥鞭从此启程，路上春色正好，天上太阳正晴。
+
+艰难困苦，玉汝于成。
+
+
+### Hint
+
+Pen and paper are your friends.
