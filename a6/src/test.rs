@@ -238,3 +238,18 @@ fn compile9() {
     let r = run_helper(filename);
     assert_eq!(r.as_str(), "3628800\n");
 }
+
+#[test]
+fn compile10() {
+    let s = "
+    (letrec ([if-test$1 (lambda ()
+                           (locals (x.5)
+                             (* (if (begin (set! x.5 5) (= x.5 5))
+                                    (+ x.5 10)
+                                    (- x.5 10)) 10)))])
+       (locals () (if-test$1)))";
+    let filename = "c10.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "150\n");
+}

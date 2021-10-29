@@ -69,6 +69,7 @@ move-relation optimization is skiped
 
 since we have no expose-frame-variable at all, we need to modify the CompileToAsm, fv_to_deref
 
+(value value*) is not supported now. Because I think it is a scheme-feature not a UIL feature.
 
 
 ### Hint
