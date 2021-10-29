@@ -590,7 +590,7 @@ impl AssignRegister {
 
     // find the low-degree variable, if exists, return it. Else, spills a uvar.
     fn proposal_var(&self, uvars: &mut HashSet<String>, unspills: &mut HashSet<String>, conflict_graph: &ConflictGraph) -> String {
-        let k = conflict_graph.len();
+        let k = REGISTERS.len();
 
         let (uv, uvdegree) = self.find_low_degree(conflict_graph, unspills);
         if uvdegree < k { 
