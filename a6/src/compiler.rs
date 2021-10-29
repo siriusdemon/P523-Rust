@@ -111,6 +111,10 @@ fn set1(dst: Expr, src: Expr) -> Expr {
     Set (Box::new(dst), Box::new(src))
 }
 
+fn if2(pred: Expr, b1: Expr, b2: Expr) -> Expr {
+    If (Box::new(pred), Box::new(b1), Box::new(b2))
+}
+
 
 
 pub struct ParseExpr {}
@@ -126,7 +130,7 @@ impl ParseExpr {
 
 pub struct RemoveComplexOpera {}
 impl RemoveComplexOpera {
-    fn run(&self, expr: Expr) -> Expr {
+     fn run(&self, expr: Expr) -> Expr {
         match expr {
             Letrec (lambdas, box body) => {
                 let new_lambdas: Vec<Expr> = lambdas.into_iter()
@@ -152,122 +156,153 @@ impl RemoveComplexOpera {
 
     fn tail_helper(&self, tail: Expr, locals: &mut HashSet<String>) -> Expr {
         match tail {
-            Funcall (labl, args) => {
-                let mut collector = vec![];
-                let new_args = args.into_iter().map(|x| self.simplify(x, &mut collector, locals)).collect();
-                let new_funcall = Funcall (labl, new_args);
-                collector.push( new_funcall );
-                return flatten_begin(Begin (collector));
-            },
-            Prim2 (op, box e1, box e2) => {
-                let mut collector = vec![];    
-                let new_e1 = self.simplify(e1, &mut collector, locals);
-                let new_e2 = self.simplify(e2, &mut collector, locals);
-                let new_prim2 = Prim2 (op, Box::new(new_e1), Box::new(new_e2));
-                collector.push(new_prim2);
-                return flatten_begin(Begin (collector));
-            },
-            Begin (mut exprs) => {
-                let tail = exprs.pop().unwrap();
-                let new_tail = self.tail_helper(tail, locals);
-                exprs = exprs.into_iter().map(|e| self.effect_helper(e, locals)).collect();
-                exprs.push(new_tail);
-                return flatten_begin(Begin (exprs));
+            Prim2 (op, box v1, box v2) => {
+                let mut exprs = vec![];
+                let triv1 = self.reduce_value(v1, locals, &mut exprs);
+                let triv2 = self.reduce_value(v2, locals, &mut exprs);
+                let prim2 = Prim2 (op, Box::new(triv1), Box::new(triv2));
+                if exprs.len() == 0 { return prim2; }
+                exprs.push(prim2);
+                return Begin (exprs);
+            }
+            Funcall (labl, mut args) => {
+                let mut exprs = vec![];
+                args = args.into_iter().map(|e| self.reduce_value(e, locals, &mut exprs)).collect();
+                let funcall = Funcall (labl, args);
+                if exprs.len() == 0 { return funcall; }
+                exprs.push(funcall);
+                return Begin (exprs);
             }
             If (box pred, box b1, box b2) => {
                 let new_b1 = self.tail_helper(b1, locals);
                 let new_b2 = self.tail_helper(b2, locals);
                 let new_pred = self.pred_helper(pred, locals);
-                return If (Box::new(new_pred), Box::new(new_b1), Box::new(new_b2));
-            }
-            e => e,
-        }
-    }
-
-    fn pred_helper(&self, pred: Expr, locals: &mut HashSet<String>) -> Expr {
-        match pred {
-            Prim2 (relop, box e1, box e2) => {
-                let mut collector = vec![];
-                let new_e1 = self.simplify(e1, &mut collector, locals);
-                let new_e2 = self.simplify(e2, &mut collector, locals);
-                let new_prim = Prim2 (relop, Box::new(new_e1), Box::new(new_e2));
-                collector.push(new_prim);
-                return flatten_begin(Begin (collector));
-            }
-            If (box pred, box br1, box br2) => {
-                let new_br1 = self.pred_helper(br1, locals);
-                let new_br2 = self.pred_helper(br2, locals);
-                let new_pred = self.pred_helper(pred, locals);
-                return If (Box::new(new_pred), Box::new(new_br1), Box::new(new_br2));
+                return if2(new_pred, new_b1, new_b2);
             }
             Begin (mut exprs) => {
                 let mut tail = exprs.pop().unwrap();
-                tail = self.pred_helper(tail, locals);
+                tail = self.tail_helper(tail, locals);
                 exprs = exprs.into_iter().map(|e| self.effect_helper(e, locals)).collect();
                 exprs.push(tail);
-                return flatten_begin(Begin (exprs));
+                return Begin (exprs);
             }
-            boolean => boolean,
+            e => e,
+        }         
+    }    
+
+    fn pred_helper(&self, pred: Expr, locals: &mut HashSet<String>) -> Expr {
+        match pred {
+            Prim2 (relop, box v1, box v2) => {
+                let mut exprs = vec![];
+                let new_v1 = self.reduce_value(v1, locals, &mut exprs);
+                let new_v2 = self.reduce_value(v2, locals, &mut exprs);
+                let prim2 = Prim2 (relop, Box::new(new_v1), Box::new(new_v2));
+                if exprs.len() == 0 { return prim2; }
+                exprs.push(prim2);
+                return Begin (exprs);
+            }
+            If (box pred, box br1, box br2) => {
+                let new_pred = self.pred_helper(pred, locals);
+                let new_br1 = self.pred_helper(br1, locals);
+                let new_br2 = self.pred_helper(br2, locals);
+                return if2(new_pred, new_br1, new_br2);
+            }
+            Begin (mut exprs) => {
+                let mut pred = exprs.pop().unwrap();
+                pred = self.pred_helper(pred, locals);
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e, locals)).collect();
+                exprs.push(pred);
+                return Begin(exprs);
+            }
+            simple => simple,
         }
     }
-
+    
     fn effect_helper(&self, effect: Expr, locals: &mut HashSet<String>) -> Expr {
         match effect {
-            Set (box sym, box v) => {
-                let mut collector = vec![];
-                let new_v = self.simplify(v, &mut collector, locals);
-                let new_set = set1(sym, new_v);
-                collector.push(new_set);
-                return flatten_begin(Begin (collector));
+            Set (box sym, box Prim2 (op, box v1, box v2)) => {
+                let mut exprs = vec![];
+                let new_v1 = self.reduce_value(v1, locals, &mut exprs);
+                let new_v2 = self.reduce_value(v2, locals, &mut exprs);
+                let new_set = set2(sym, op, new_v1, new_v2);
+                if exprs.len() == 0 { return new_set; }
+                exprs.push(new_set);
+                return Begin (exprs);
+            }
+            Set (box sym, box value) => {
+                let mut exprs = vec![];
+                let new_value = self.reduce_value(value, locals, &mut exprs);
+                let new_set = set1(sym, new_value);
+                if exprs.len() == 0 { return new_set; }
+                exprs.push(new_set);
+                return Begin (exprs);
             }
             If (box pred, box br1, box br2) => {
                 let new_br1 = self.effect_helper(br1, locals);
                 let new_br2 = self.effect_helper(br2, locals);
                 let new_pred = self.pred_helper(pred, locals);
-                return If (Box::new(new_pred), Box::new(new_br1), Box::new(new_br2));
+                return if2(new_pred, new_br1, new_br2);
             }
-            Begin (exprs) => {
-                let new_exprs: Vec<Expr> = exprs.into_iter().map(|e| self.effect_helper(e, locals)).collect();
-                return flatten_begin(Begin (new_exprs));
+            Begin (mut exprs) => {
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e, locals)).collect();
+                return Begin (exprs);
             }
             e => e,
         }
     }
 
-    fn simplify(&self, expr: Expr, collector: &mut Vec<Expr>, locals: &mut HashSet<String>) -> Expr {
-        match expr {
-            Prim2 (op, box e1, box e2) => {
-                let new_e1 = self.simplify(e1, collector, locals);
-                let new_e2 = self.simplify(e2, collector, locals);
-                let new_prim = Prim2 (op, Box::new(new_e1), Box::new(new_e2));
-                let tmp = gen_uvar();
-                locals.insert(tmp.clone());
-                let set = Set (Box::new(Symbol (tmp.clone())), Box::new(new_prim));
-                collector.push(set);
-                return Symbol (tmp);
+    // turn value into a triv, expose any code to prelude
+    // any call to this function expect a simple triv
+    fn reduce_value(&self, value: Expr, locals: &mut HashSet<String>, prelude: &mut Vec<Expr>) -> Expr {
+        match value {
+            Prim2 (op, box v1, box v2) => {
+                let new_v1 = self.reduce_value(v1, locals, prelude);
+                let new_v2 = self.reduce_value(v2, locals, prelude);
+                let new_uvar = gen_uvar();
+                let assign = set2(Symbol (new_uvar.clone()), op, new_v1, new_v2);
+                prelude.push(assign);
+                locals.insert(new_uvar.clone());
+                return Symbol (new_uvar)
             }
-            If (box pred, box br1, box br2) => {
+            If (box pred, box b1, box b2) => {
                 let new_pred = self.pred_helper(pred, locals);
-                let mut br1_collector = vec![];
-                let mut new_br1 = self.simplify(br1, &mut br1_collector, locals);
-                br1_collector.push(new_br1);
-                new_br1 = Begin (br1_collector);
-                let mut br2_collector = vec![];
-                let mut new_br2 = self.simplify(br2, &mut br2_collector, locals);
-                br2_collector.push(new_br2);
-                new_br2 = Begin (br2_collector);
-                return If (Box::new(new_pred), Box::new(new_br1), Box::new(new_br2));
-
+                let mut exprs1 = vec![];
+                let mut new_b1 = self.reduce_value(b1, locals, &mut exprs1);
+                if exprs1.len() > 0 { 
+                    exprs1.push(new_b1);
+                    new_b1 = Begin (exprs1);
+                }
+                let mut exprs2 = vec![];
+                let mut new_b2 = self.reduce_value(b2, locals, &mut exprs2);
+                if exprs2.len() > 0 { 
+                    exprs2.push(new_b2);
+                    new_b2 = Begin (exprs2);
+                }
+                let new_if = if2(new_pred, new_b1, new_b2);
+                let new_uvar = gen_uvar();
+                let assign = set1(Symbol (new_uvar.clone()), new_if);
+                prelude.push(assign);
+                locals.insert(new_uvar.clone());
+                return Symbol (new_uvar);
             }
             Begin (mut exprs) => {
-                let mut tail = exprs.pop().unwrap();
-                let mut collector = vec![];
-                tail = self.simplify(tail, &mut collector, locals);
+                let mut value = exprs.pop().unwrap();
+                let mut exprs_ = vec![];
+                value = self.reduce_value(value, locals, &mut exprs_);
+                if exprs_.len() > 0 {
+                    exprs_.push(value);
+                    value = Begin (exprs_);
+                }
                 exprs = exprs.into_iter().map(|e| self.effect_helper(e, locals)).collect();
-                exprs.push(tail);
-                return flatten_begin(Begin (exprs));
+                exprs.push(value);
+                let new_begin = Begin (exprs);
+                let new_uvar = gen_uvar();
+                let assign = set1(Symbol (new_uvar.clone()), new_begin);
+                prelude.push(assign);
+                locals.insert(new_uvar.clone());
+                return Symbol (new_uvar);
             }
-            e => e,
+            simple => simple,
         }
     }
 }

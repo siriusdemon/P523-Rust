@@ -19,5 +19,10 @@ fn main() -> std::io::Result<()> {
               (nop)
               (set! a.1 (+ a.1 a.1)))
           a.1)))";
-   compile(s, "t.s")
+    let s = "
+    (letrec ()
+      (locals (a.1 b.2)
+        (if (+ (+ a.1 (+ b.2 1)) (+ 10 b.2)) (if (= a (+ b c)) 4 6) 19)))";
+    
+    compile(s, "t.s")
 }
