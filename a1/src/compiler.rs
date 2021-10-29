@@ -109,11 +109,17 @@ impl GenerateAsm {
     }
 }
 
+pub fn compile_formater<T: std::fmt::Display>(s: &str, expr: &T) {
+    println!(">>> {}", s);
+    println!("----------------------------");
+    println!("{}", expr);
+    println!("----------------------------\n");
+}
 
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseExpr{}.run(s);
-    println!("{:?}", expr);
+    compile_formater("ParseExpr", &expr);
     let asms = CompileToAsm{}.run(expr);
-    println!("{}", asms);
+    compile_formater("CompileToAsm", &asms);
     GenerateAsm{}.run(asms, filename)
 }

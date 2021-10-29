@@ -52,7 +52,13 @@ impl fmt::Display for Asm {
             Imm(n) => write!(f, "${}", n),
             Op2(op, box e1, box e2) => write!(f, "\t{} {}, {}\n", op, e1, e2),
             Retq => write!(f, "\tretq\n"),
-            e => write!(f, "DEBUG INFO\n{:?}", e)
+            Cfg (labl, codes) => {
+                let mut codes_str = String::new();
+                for code in codes {
+                    codes_str.push_str( &format!("{}", code) );
+                }
+                return write!(f, "{}:\n{}", labl, codes_str);
+            }
         }
     }
 }
