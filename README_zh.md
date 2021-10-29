@@ -3,7 +3,7 @@ P523 经典编译器课程的 Rust 引导
 
 P523 是一门经典的编译器课程，由 chez-scheme 的作者，R. Kent Dybvig 和他的助手教授。十年过去了，还有人想学习这门课程。
 
-![](hacker-news.png)
+![](./hacker-news.png)
 
 Kent 是谁？
 
