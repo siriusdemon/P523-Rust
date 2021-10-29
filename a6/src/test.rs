@@ -119,7 +119,7 @@ fn compile5() {
     assert_eq!(r.as_str(), "32\n");
 }
 
-// I leave this test here to remain myself that the register allocator is not optimized.
+// I leave this test here to remind myself that the register allocator is not optimized.
 #[test]
 fn compile6() {
     let s = "
@@ -252,4 +252,21 @@ fn compile10() {
     compile(s, filename);
     let r = run_helper(filename);
     assert_eq!(r.as_str(), "150\n");
+}
+
+// remind myself that the (value value*) is not supported yet.
+#[test]
+#[should_panic()]
+fn compile11() {
+    let s = "
+    (letrec ([f1 (lambda () (locals () 42))]
+             [f2 (lambda () (locals () 10))])
+            
+        (locals (x.1)
+            (set! x.1 1)
+            ((if (= x.1 1) f1 f2))))";
+    let filename = "c10.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "42\n");
 }
