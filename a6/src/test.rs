@@ -220,3 +220,21 @@ fn compile8() {
     let r = run_helper(filename);
     assert_eq!(r.as_str(), "820\n");
 }
+
+#[test]
+fn compile9() {
+    let s = "
+    (letrec ([fact$0 (lambda (n.1)
+                       (locals ()
+                         (fact$1 n.1 1)))]
+             [fact$1 (lambda (n.1 a.2)
+                       (locals ()
+                         (if (= n.1 0)
+                             a.2
+                             (fact$1 (- n.1 1) (* n.1 a.2)))))])
+      (locals () (fact$0 10)))";
+    let filename = "c9.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "3628800\n");
+}
