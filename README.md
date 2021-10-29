@@ -1,14 +1,13 @@
 ## P523-Rust
 
 
-P523 is a classic compiler course taught by R. Kent Dybvig. This repo implements the course using Rust, provides full documentation and materials to help you master P523.
+P523 is a classic compiler course taught by R. Kent Dybvig. This repo implements the course using Rust, provides a framework to help you master P523.
 
-There will be two branch of this repo, one will be designed as a homework framework. You are asked to write some code to pass all the tests. Another one is same as the previous one but with full code, useful when you stuck.
+There will be two branch of this repo, one will be designed as a homework. You are asked to write some code to pass all the tests. Another one is same as the previous one but with full code, useful when you stuck.
 
 The P523 PDF files spreaded around the Internet is the main materials you have to read again and again. Asides, this repo provides some useful hints. The code framework serves as a hint too.
 
-I am going to explain the homework framework a little bit when I finish.
-
+I am going to explain the framework a little bit when I finish.
 
 Note: As you proceeds, the framework also evolves. Some patterns appear and certain code are modified to abstract them. But the whole framework is still  understandable. So this course will be an adventure! Enjoy it!
 
