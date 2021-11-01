@@ -237,7 +237,6 @@ impl RemoveComplexOpera {
                 exprs.push(new_set);
                 return Begin (exprs);
             }
-
             Set (box sym, box value) => {
                 let mut exprs = vec![];
                 let new_value = self.reduce_value(value, locals, &mut exprs);
@@ -320,14 +319,13 @@ impl RemoveComplexOpera {
                 return Symbol (new_uvar);
             }
             Funcall (labl, mut args) => {
-                let mut exprs = vec![];
-                args = args.into_iter().map(|e| self.reduce_value(e, locals, &mut exprs)).collect();
+                args = args.into_iter().map(|e| self.reduce_value(e, locals, prelude)).collect();
                 let funcall = Funcall (labl, args);
                 let new_uvar = gen_uvar();
                 let assign = set1(Symbol (new_uvar.clone()), funcall);
                 prelude.push(assign);
                 locals.insert(new_uvar.clone());
-                return Symbol (new_uvar)
+                return Symbol (new_uvar);
             }
             simple => simple,
         }
@@ -1726,8 +1724,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("ParseExpr", &expr);
     let expr = RemoveComplexOpera{}.run(expr);
     compile_formatter("RemoveComplexOpera", &expr);
-    let expr = FlattenSet{}.run(expr);
-    compile_formatter("FlattenSet", &expr);
+    // let expr = FlattenSet{}.run(expr);
+    // compile_formatter("FlattenSet", &expr);
     Ok(())
     // let expr = ImposeCallingConvention{}.run(expr);
     // compile_formatter("ImposeCallingConvention", &expr);
