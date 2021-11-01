@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::vec::IntoIter;
 use uuid::Uuid;
 
-use crate::syntax::{Expr, Asm, ConflictGraph};
+use crate::syntax::{Expr, Asm, ConflictGraph, Frame};
 use crate::parser::{Scanner, Parser};
 
 use Expr::*;
@@ -489,15 +489,21 @@ impl ImposeCallingConvention {
             // assign frame var later if any
             exprs.append(&mut fv_assign);
 
-            let new_tail = self.tail_helper(tail, rp);
+            let mut new_frame = Frame::new();
+            let new_tail = self.tail_helper(tail, rp, &mut new_frame);
             exprs.push(new_tail);
+            for lst in new_frame.iter() {
+                for var in lst {
+                    uvars.insert(var.to_string());
+                }
+            }
             return Locals (uvars, Box::new(flatten_begin(Begin (exprs))));
 
         }
         unreachable!()
     }
 
-    fn tail_helper(&self, tail: Expr, rp: &str) -> Expr {
+    fn tail_helper(&self, tail: Expr, rp: &str, new_frame: &mut Frame) -> Expr {
         match tail {
             Funcall (labl, mut args) => {
                 let mut exprs = vec![];
@@ -521,18 +527,19 @@ impl ImposeCallingConvention {
                 exprs.push(new_call);
                 return Begin (exprs);
             }
-            If (box pred, box b1, box b2) => {
-                let new_b1 = self.tail_helper(b1, rp);
-                let new_b2 = self.tail_helper(b2, rp);
+            If (box mut pred, box b1, box b2) => {
+                let new_b1 = self.tail_helper(b1, rp, new_frame);
+                let new_b2 = self.tail_helper(b2, rp, new_frame);
+                pred = self.pred_helper(pred, new_frame);
                 return If (Box::new(pred), Box::new(new_b1), Box::new(new_b2));
             }
             Begin (mut exprs) => {
                 let mut tail = exprs.pop().unwrap();
-                tail = self.tail_helper(tail, rp);
+                tail = self.tail_helper(tail, rp, new_frame);
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e, new_frame)).collect();
                 exprs.push(tail);
                 return Begin (exprs);
             }
-
             Prim2 (op, box v1, box v2) => {
                 let expr = set2(Symbol (RETURN_VALUE_REGISTER.to_string()), op, v1, v2);
                 let args = vec![
@@ -554,6 +561,74 @@ impl ImposeCallingConvention {
             e => e,
         }
     }
+    
+    fn pred_helper(&self, pred: Expr, new_frame: &mut Frame) -> Expr {
+        match pred  {
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred, new_frame);
+                let new_b1 = self.pred_helper(b1, new_frame);
+                let new_b2 = self.pred_helper(b2, new_frame);
+                return if2(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                let mut pred = exprs.pop().unwrap();
+                pred = self.pred_helper(pred, new_frame);
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e, new_frame)).collect();
+                exprs.push(pred);
+                return Begin (exprs);
+            }
+            e => e,
+        }
+    }
+
+    fn effect_helper(&self, effect: Expr, new_frame: &mut Frame) -> Expr {
+        match effect {
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred, new_frame);
+                let new_b1 = self.effect_helper(b1, new_frame);
+                let new_b2 = self.effect_helper(b2, new_frame);
+                return if2(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e, new_frame)).collect();
+                return Begin (exprs);
+            }
+            Funcall (labl, mut args) => {
+                let rp_label = get_rp(&labl);
+                let mut assigns = vec![];
+                let mut fv_assign = vec![];
+                let mut liveset = vec![
+                    Symbol (FRAME_POINTER_REGISTER.to_string()),
+                    Symbol (RETRUN_ADDRESS_REGISTER.to_string()),
+                ];
+                if args.len() > PARAMETER_REGISTERS.len() {
+                    let mut fvs = vec![];
+                    for a in args.drain(PARAMETER_REGISTERS.len()..) {
+                        let new_uvar = gen_uvar(); 
+                        fvs.push(new_uvar.clone());
+                        liveset.push(Symbol (new_uvar.clone()));
+                        fv_assign.push(set1(Symbol (new_uvar), a));
+                    }
+                    new_frame.insert(fvs);
+                }
+                for (val, reg) in args.into_iter().zip(PARAMETER_REGISTERS) {
+                    liveset.push(Symbol (reg.to_string()));
+                    assigns.push(set1(val, Symbol (reg.to_string())));
+                }
+                assigns.push(set1(Symbol (RETURN_VALUE_REGISTER.to_string()), Symbol (rp_label.clone())));
+                assigns.append(&mut fv_assign);
+                let new_call = Funcall (labl, liveset);
+                ReturnPoint (rp_label, Box::new(new_call))
+            }
+            Set (box sym, box Funcall (labl, args)) => {
+                let mut exprs = vec![];
+                exprs.push(set1(sym, Symbol (RETURN_VALUE_REGISTER.to_string())));
+                exprs.push(self.effect_helper(Funcall (labl, args), new_frame));
+                return Begin (exprs);
+            }
+            e => e,
+        }
+    } 
 }
 
 pub trait UncoverConflict {
@@ -1724,11 +1799,11 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("ParseExpr", &expr);
     let expr = RemoveComplexOpera{}.run(expr);
     compile_formatter("RemoveComplexOpera", &expr);
-    // let expr = FlattenSet{}.run(expr);
-    // compile_formatter("FlattenSet", &expr);
+    let expr = FlattenSet{}.run(expr);
+    compile_formatter("FlattenSet", &expr);
+    let expr = ImposeCallingConvention{}.run(expr);
+    compile_formatter("ImposeCallingConvention", &expr);
     Ok(())
-    // let expr = ImposeCallingConvention{}.run(expr);
-    // compile_formatter("ImposeCallingConvention", &expr);
     // let expr = UncoverFrameConflict{}.run(expr);
     // compile_formatter("UncoverFrameConflict", &expr);
     // let mut expr = IntroduceAllocationForm{}.run(expr);

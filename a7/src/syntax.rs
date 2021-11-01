@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 pub type ConflictGraph = HashMap<String, HashSet<String>>;
+pub type Frame = HashSet<Vec<String>>;
 
 fn conflict_graph_formatter(form: &str, conflict_graph: &ConflictGraph, tail: &Expr) -> String {
     let mut cg = vec![];
@@ -35,6 +36,7 @@ pub enum Expr {
     Lambda(String, Vec<String>, Box<Expr>),
     RegisterConflict(ConflictGraph, Box<Expr>),
     FrameConflict(ConflictGraph, Box<Expr>),
+    ReturnPoint(String, Box<Expr>),
     Begin(Vec<Expr>),
     Prim1(String, Box<Expr>),
     Prim2(String, Box<Expr>, Box<Expr>),
@@ -89,6 +91,10 @@ impl fmt::Display for Expr {
             }
             FrameConflict (conflict_graph, box tail) => {
                 let s = conflict_graph_formatter("frame-conflict", conflict_graph, tail);
+                write!(f, "{}", s)
+            }
+            ReturnPoint (rp, box e) => {
+                let s = format!("(return-point {} {})", rp, e);
                 write!(f, "{}", s)
             }
             Begin ( exprs ) => {
