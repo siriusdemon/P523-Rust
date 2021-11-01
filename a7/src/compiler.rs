@@ -229,6 +229,15 @@ impl RemoveComplexOpera {
                 exprs.push(new_set);
                 return Begin (exprs);
             }
+            Set (box sym, box Funcall (labl, mut args)) => {
+                let mut exprs = vec![];
+                args = args.into_iter().map(|x| self.reduce_value(x, locals, &mut exprs)).collect();
+                let new_set = set1(sym, Funcall (labl, args));
+                if exprs.len() == 0 { return new_set; }
+                exprs.push(new_set);
+                return Begin (exprs);
+            }
+
             Set (box sym, box value) => {
                 let mut exprs = vec![];
                 let new_value = self.reduce_value(value, locals, &mut exprs);
@@ -314,9 +323,11 @@ impl RemoveComplexOpera {
                 let mut exprs = vec![];
                 args = args.into_iter().map(|e| self.reduce_value(e, locals, &mut exprs)).collect();
                 let funcall = Funcall (labl, args);
-                if exprs.len() == 0 { return funcall; }
-                exprs.push(funcall);
-                return Begin (exprs);
+                let new_uvar = gen_uvar();
+                let assign = set1(Symbol (new_uvar.clone()), funcall);
+                prelude.push(assign);
+                locals.insert(new_uvar.clone());
+                return Symbol (new_uvar)
             }
             simple => simple,
         }
