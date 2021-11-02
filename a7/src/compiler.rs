@@ -553,8 +553,8 @@ impl ImposeCallingConvention {
                 let jump = Funcall (get_rp(rp), args);
                 return Begin (vec![expr, jump]);
             }
-            Symbol (e) => {
-                let expr = set1(Symbol (RETURN_VALUE_REGISTER.to_string()), Symbol (e));
+            atom => {
+                let expr = set1(Symbol (RETURN_VALUE_REGISTER.to_string()), atom);
                 let args = vec![
                     Symbol (FRAME_POINTER_REGISTER.to_string()),
                     Symbol (RETURN_VALUE_REGISTER.to_string()),
@@ -562,7 +562,6 @@ impl ImposeCallingConvention {
                 let jump = Funcall (get_rp(rp), args);
                 return Begin (vec![expr, jump]);
             }
-            e => e,
         }
     }
     

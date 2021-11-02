@@ -11,18 +11,12 @@ use compiler::compile;
 
 fn main() -> std::io::Result<()> {
     let s = "
-    (letrec ([f$0 (lambda (x.1) (locals () (+ 1 x.1)))]
-             [g$1 (lambda (x.1) (locals () (- x.1 1)))]
-             [t$2 (lambda (x.1) (locals () (- x.1 1)))]
-             [j$3 (lambda (x.1) (locals () (- x.1 1)))]
-             [i$4 (lambda (x.1) (locals () (- x.1 1)))]
-             [h$5 (lambda (x.1) (locals () (- x.1 1)))])
-      (locals (x.1 a.2 b.3 c.4)
+    (letrec ([f$0 (lambda (h.1 v.2) (locals () (* h.1 v.2)))]
+             [k$1 (lambda (x.1) (locals () (+ x.1 5)))]
+             [g$2 (lambda (x.1) (locals () (+ 1 x.1)))])
+      (locals (x.4 g.1)
         (begin
-          (set! x.1 80)
-          (set! a.2 (f$0 x.1))
-          (set! b.3 (g$1 x.1))
-          (set! c.4 (h$5 (i$4 (j$3 (t$2 x.1)))))
-          (* a.2 (* b.3 (+ c.4 0))))))";
+          (set! x.4 15)
+          (k$1 (g$2 (begin (set! g.1 3) (f$0 g.1 x.4)))))))";
     compile(s, "t.s")
 }

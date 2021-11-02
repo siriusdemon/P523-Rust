@@ -138,8 +138,7 @@ impl CompileToAsm {
     }
 
     fn fv_to_deref(&self, fv :&str) -> Asm {
-        let v :Vec<&str> = fv.split("fv").collect();
-        let index :i64 = v[1].parse().unwrap();
+        let index :i64 = fv[2..].parse().unwrap();
         return Deref (Box::new(RBP), index * 8);
     }
 

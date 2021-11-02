@@ -265,8 +265,36 @@ fn compile11() {
         (locals (x.1)
             (set! x.1 1)
             ((if (= x.1 1) f1 f2))))";
-    let filename = "c10.s";
+    let filename = "c11.s";
     compile(s, filename);
     let r = run_helper(filename);
     assert_eq!(r.as_str(), "42\n");
+}
+
+#[test]
+fn compile12() {
+    let s = "
+    (letrec ([f$0 (lambda (h.1 v.2) (locals () (* h.1 v.2)))]
+             [k$1 (lambda (x.1) (locals () (+ x.1 5)))]
+             [g$2 (lambda (x.1) (locals () (+ 1 x.1)))])
+      (locals (x.4 g.1)
+        (begin
+          (set! x.4 15)
+          (k$1 (g$2 (begin (set! g.1 3) (f$0 g.1 x.4)))))))";
+    let filename = "c12.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "51\n");
+}
+
+#[test]
+fn compile13() {
+    let s = "
+    (letrec ([one$1 (lambda (n.1) 
+                      (locals () (if (= 0 n.1) 1 (one$1 (- n.1 1)))))])
+       (locals () (one$1 13)))";
+    let filename = "c13.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "1\n");
 }
