@@ -36,6 +36,8 @@ pub enum Expr {
     Lambda(String, Vec<String>, Box<Expr>),
     RegisterConflict(ConflictGraph, Box<Expr>),
     FrameConflict(ConflictGraph, Box<Expr>),
+    NewFrames(Frame, Box<Expr>),
+    CallLive(HashSet<String>, Box<Expr>),
     ReturnPoint(String, Box<Expr>),
     Begin(Vec<Expr>),
     Prim1(String, Box<Expr>),
@@ -93,8 +95,25 @@ impl fmt::Display for Expr {
                 let s = conflict_graph_formatter("frame-conflict", conflict_graph, tail);
                 write!(f, "{}", s)
             }
+            NewFrames (frames, box tail) => {
+                let mut vs = vec![];
+                for lst in frames.iter() {
+                    let seqs: Vec<String> = lst.iter().map(|e| format!("{}", e)).collect();
+                    let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+                    let seqs_s = seqs_ref.join(" ");
+                    vs.push(format!("({})", seqs_s));
+                }
+                let vs_ref: Vec<&str> = vs.iter().map(|s| s.as_ref()).collect();
+                let vs_s = vs_ref.join(" ");
+                let s = format!("(new-frames ({}) {})", vs_s, tail);
+                write!(f, "{}", s)
+            }
             ReturnPoint (rp, box e) => {
                 let s = format!("(return-point {} {})", rp, e);
+                write!(f, "{}", s)
+            }
+            CallLive (set, box tail) => {
+                let s = seqs_formatter("call-live", set.iter(), " ", tail);
                 write!(f, "{}", s)
             }
             Begin ( exprs ) => {
