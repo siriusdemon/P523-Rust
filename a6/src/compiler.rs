@@ -408,6 +408,7 @@ impl FlattenSet {
             Begin (mut exprs) => {
                 let mut tail = exprs.pop().unwrap();
                 tail = self.simplify_set(sym, tail);
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e)).collect();
                 exprs.push(tail);
                 return flatten_begin(Begin (exprs));
             }
