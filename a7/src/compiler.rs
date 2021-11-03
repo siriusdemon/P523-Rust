@@ -44,6 +44,10 @@ fn is_fv(s: &str) -> bool {
     s.starts_with("fv")
 }
 
+fn is_nfv(s: &str) -> bool {
+    s.starts_with("nfv")
+}
+
 fn is_uvar(sym: &str) -> bool {
     match sym.rfind('.') {
         Some(index) => index > 0 && index < sym.len() - 1,
@@ -77,8 +81,16 @@ fn gen_uvar() -> String {
     gensym("t.")
 }
 
+fn gen_new_fv() -> String {
+    gensym("nfv.")
+}
+
 fn get_rp(name: &str) -> String {
     format!("rp.{}", name.replace("$", ""))
+}
+
+fn get_rp_nontail(name: &str) -> String {
+    format!("rpnt.{}", name.replace("$", ""))
 }
 
 fn flatten_begin(expr: Expr) -> Expr {
@@ -597,8 +609,8 @@ impl ImposeCallingConvention {
                 return Begin (exprs);
             }
             Funcall (labl, mut args) => {
-                let rp_label = get_rp(&labl);
-                let mut assigns = vec![];
+                let rp_label = get_rp_nontail(&labl);
+                let mut exprs = vec![];
                 let mut fv_assign = vec![];
                 let mut liveset = vec![
                     Symbol (FRAME_POINTER_REGISTER.to_string()),
@@ -607,26 +619,27 @@ impl ImposeCallingConvention {
                 if args.len() > PARAMETER_REGISTERS.len() {
                     let mut fvs = vec![];
                     for a in args.drain(PARAMETER_REGISTERS.len()..) {
-                        let new_uvar = gen_uvar(); 
+                        let new_uvar = gen_new_fv(); 
                         fvs.push(new_uvar.clone());
                         liveset.push(Symbol (new_uvar.clone()));
                         fv_assign.push(set1(Symbol (new_uvar), a));
                     }
                     new_frame.insert(fvs);
                 }
+                exprs.append(&mut fv_assign);
                 for (val, reg) in args.into_iter().zip(PARAMETER_REGISTERS) {
                     liveset.push(Symbol (reg.to_string()));
-                    assigns.push(set1(val, Symbol (reg.to_string())));
+                    exprs.push(set1(Symbol (reg.to_string()), val));
                 }
-                assigns.push(set1(Symbol (RETURN_VALUE_REGISTER.to_string()), Symbol (rp_label.clone())));
-                assigns.append(&mut fv_assign);
+                exprs.push(set1(Symbol (RETRUN_ADDRESS_REGISTER.to_string()), Symbol (rp_label.clone())));
                 let new_call = Funcall (labl, liveset);
-                ReturnPoint (rp_label, Box::new(new_call))
+                exprs.push(new_call);
+                ReturnPoint (rp_label, Box::new(Begin (exprs)))
             }
             Set (box sym, box Funcall (labl, args)) => {
                 let mut exprs = vec![];
-                exprs.push(set1(sym, Symbol (RETURN_VALUE_REGISTER.to_string())));
                 exprs.push(self.effect_helper(Funcall (labl, args), new_frame));
+                exprs.push(set1(sym, Symbol (RETURN_VALUE_REGISTER.to_string())));
                 return Begin (exprs);
             }
             e => e,
@@ -638,7 +651,7 @@ pub trait UncoverConflict {
     fn type_verify(&self, s: &str) -> bool;
     fn uncover_conflict(&self, conflict_graph: ConflictGraph, tail: Expr) -> Expr;
     fn tail_liveset(&self, tail: &Expr, mut liveset: HashSet<String>, conflict_graph: &mut ConflictGraph, 
-                                          call_live: &mut HashSet<String>, spills: &mut HashSet<String>) -> HashSet<String> {
+                                          call_live: &mut HashSet<String>) -> HashSet<String> {
         match tail {
             Funcall (labl, args) => {
                 for a in args {
@@ -651,19 +664,19 @@ pub trait UncoverConflict {
                 }
                 return liveset;
             }
-            If (box Bool(true), box b1, _) => self.tail_liveset(b1, liveset, conflict_graph, call_live, spills),
-            If (box Bool(false), _, box b2) => self.tail_liveset(b2, liveset, conflict_graph, call_live, spills),
+            If (box Bool(true), box b1, _) => self.tail_liveset(b1, liveset, conflict_graph, call_live),
+            If (box Bool(false), _, box b2) => self.tail_liveset(b2, liveset, conflict_graph, call_live),
             If (box pred, box b1, box b2) => {
-                let true_set = self.tail_liveset(b1, liveset.clone(), conflict_graph, call_live, spills);
-                let false_set = self.tail_liveset(b2, liveset, conflict_graph, call_live, spills);
-                return self.pred_liveset(pred, true_set, false_set, conflict_graph, call_live, spills);
+                let true_set = self.tail_liveset(b1, liveset.clone(), conflict_graph, call_live);
+                let false_set = self.tail_liveset(b2, liveset, conflict_graph, call_live);
+                return self.pred_liveset(pred, true_set, false_set, conflict_graph, call_live);
             }
             Begin (exprs) => {
                 let exprs_slice = exprs.as_slice();
                 let last = exprs.len() - 1;
-                liveset = self.tail_liveset(&exprs_slice[last], liveset, conflict_graph, call_live, spills);
+                liveset = self.tail_liveset(&exprs_slice[last], liveset, conflict_graph, call_live);
                 for i in (0..last).rev() {
-                    liveset = self.effect_liveset(&exprs_slice[i], liveset, conflict_graph, call_live, spills); 
+                    liveset = self.effect_liveset(&exprs_slice[i], liveset, conflict_graph, call_live); 
                 }
                 return liveset;
             }
@@ -672,21 +685,21 @@ pub trait UncoverConflict {
     }
 
     fn pred_liveset(&self, pred: &Expr, tliveset: HashSet<String>, fliveset: HashSet<String>, conflict_graph: &mut ConflictGraph,
-                                        call_live: &mut HashSet<String>, spills: &mut HashSet<String>) -> HashSet<String> {
+                                        call_live: &mut HashSet<String>) -> HashSet<String> {
         match pred {
             Bool (true) => tliveset,
             Bool (false) => fliveset,
             If (box pred, box b1, box b2) => {
-                let new_tliveset = self.pred_liveset(b1, tliveset.clone(), fliveset.clone(), conflict_graph, call_live, spills);
-                let new_fliveset = self.pred_liveset(b2, tliveset, fliveset, conflict_graph, call_live, spills);
-                return self.pred_liveset(pred, new_tliveset, new_fliveset, conflict_graph, call_live, spills);
+                let new_tliveset = self.pred_liveset(b1, tliveset.clone(), fliveset.clone(), conflict_graph, call_live);
+                let new_fliveset = self.pred_liveset(b2, tliveset, fliveset, conflict_graph, call_live);
+                return self.pred_liveset(pred, new_tliveset, new_fliveset, conflict_graph, call_live);
             }
             Begin (exprs) => {
                 let exprs_slice = exprs.as_slice();
                 let last = exprs.len() - 1;
-                let mut liveset = self.pred_liveset(&exprs_slice[last], tliveset, fliveset, conflict_graph, call_live, spills);
+                let mut liveset = self.pred_liveset(&exprs_slice[last], tliveset, fliveset, conflict_graph, call_live);
                 for i in (0..last).rev() {
-                    liveset = self.effect_liveset(&exprs_slice[i], liveset, conflict_graph, call_live, spills); 
+                    liveset = self.effect_liveset(&exprs_slice[i], liveset, conflict_graph, call_live); 
                 }
                 return liveset;
             }
@@ -706,19 +719,19 @@ pub trait UncoverConflict {
 
 
     fn effect_liveset(&self, effect: &Expr, mut liveset: HashSet<String>, conflict_graph: &mut ConflictGraph,
-                                    call_live: &mut HashSet<String>, spills: &mut HashSet<String>) -> HashSet<String> {
+                                    call_live: &mut HashSet<String>) -> HashSet<String> {
         match effect {
             Nop => liveset,
-            If (box Bool(true), box b1, _) => self.effect_liveset(b1, liveset, conflict_graph, call_live, spills),
-            If (box Bool(false), _, box b2) => self.effect_liveset(b2, liveset, conflict_graph, call_live, spills),
+            If (box Bool(true), box b1, _) => self.effect_liveset(b1, liveset, conflict_graph, call_live),
+            If (box Bool(false), _, box b2) => self.effect_liveset(b2, liveset, conflict_graph, call_live),
             If (box pred, box b1, box b2) => {
-                let tliveset = self.effect_liveset(b1, liveset.clone(), conflict_graph, call_live, spills);
-                let fliveset = self.effect_liveset(b2, liveset, conflict_graph, call_live, spills);
-                return self.pred_liveset(pred, tliveset, fliveset, conflict_graph, call_live, spills);
+                let tliveset = self.effect_liveset(b1, liveset.clone(), conflict_graph, call_live);
+                let fliveset = self.effect_liveset(b2, liveset, conflict_graph, call_live);
+                return self.pred_liveset(pred, tliveset, fliveset, conflict_graph, call_live);
             }
             Begin (exprs) => {
                 for e in exprs.iter().rev() {
-                    liveset = self.effect_liveset(e, liveset, conflict_graph, call_live, spills);
+                    liveset = self.effect_liveset(e, liveset, conflict_graph, call_live);
                 }
                 return liveset;
             }
@@ -746,23 +759,26 @@ pub trait UncoverConflict {
                 self.record_conflicts(s, "", &liveset, conflict_graph);
                 return liveset;
             }
-            ReturnPoint (labl, box Begin (exprs)) => {
-                let exprs_slice = exprs.as_slice();
-                let last = exprs_slice.len() - 1;
-                let liveset_t = self.tail_liveset(&exprs_slice[last], liveset, conflict_graph, call_live, spills);
-                liveset = liveset_t.clone();
-                for i in (0..last).rev() {
-                    liveset = self.effect_liveset(&exprs_slice[i], liveset, conflict_graph, call_live, spills);
-                }
-                // here, gather the call-live variables and frames. Well, if type_verify is frame, we will gather frame
-                // else, we will gather register
-                for x in liveset.iter() {
-                    call_live.insert(x.to_string());
-                    if is_uvar(x) {
-                        spills.insert(x.to_string());
+            ReturnPoint (labl, box tail) => {
+                liveset = self.tail_liveset(tail, liveset, conflict_graph, call_live);
+                if let Begin (exprs) = tail {
+                    let exprs_slice = exprs.as_slice();
+                    let last = exprs_slice.len() - 1;
+                    // collect call-live here
+                    if let Funcall (lab, args) = &exprs_slice[last] {
+                        for a in args { 
+                            if let Symbol (s) = a {
+                                liveset.insert(s.to_string());
+                                if is_fv(s) || is_uvar(s) {
+                                    call_live.insert(a.to_string()); 
+                                }
+                            }
+                        } 
+                    } else {
+                        panic!("expect a Funcall, got {}", exprs_slice[last]);
                     }
                 }
-                return self.liveset_union(liveset, liveset_t);
+                return liveset;
             } 
             e => liveset,
         }
@@ -828,7 +844,9 @@ impl UncoverConflict for UncoverFrameConflict {
     fn uncover_conflict(&self, mut conflict_graph: ConflictGraph, tail: Expr) -> Expr {
         let mut call_live = HashSet::new();
         let mut spills = HashSet::new();
-        let _liveset = self.tail_liveset(&tail, HashSet::new(), &mut conflict_graph, &mut call_live, &mut spills);
+        let _liveset = self.tail_liveset(&tail, HashSet::new(), &mut conflict_graph, &mut call_live);
+        // spills are variables that going to be spilled into frame locations
+        for var in call_live.iter() { if is_uvar(var) { spills.insert(var.to_string()); } }
         Spills (spills, Box::new(FrameConflict (conflict_graph, Box::new(CallLive (call_live, Box::new(tail))))))
     }
 }
@@ -917,15 +935,12 @@ impl AssignNewFrame {
     fn decide_frame_size(&self, call_live: HashSet<String>, bindings: &HashMap<String, String>) -> usize {
         if call_live.is_empty() { return 0; }
         let mut max_fv_index = 0;
-        for x in call_live.iter() {
-            if is_fv(x) {
-                let index = fv_to_index(x);
-                max_fv_index = max_fv_index.max(index);
-            } else { // uvar
-                let fv = bindings.get(x).unwrap();
-                let index = fv_to_index(fv);
-                max_fv_index = max_fv_index.max(index);
+        for mut x in call_live.iter() {
+            if !is_fv(x) {
+                x = bindings.get(x).unwrap();
             }
+            let index = fv_to_index(x);
+            max_fv_index = max_fv_index.max(index);
         }
         return max_fv_index + 1;
     }
@@ -1119,9 +1134,9 @@ impl SelectInstructions {
                 let new_exprs: Vec<Expr> = exprs.into_iter().map(|e| self.select_instruction_effect(unspills, e)).collect();
                 return flatten_begin(Begin (new_exprs));
             }
-            ReturnPoint (labl, box Begin (mut exprs)) => {
-                exprs = exprs.into_iter().map(|e| self.select_instruction_effect(unspills, e)).collect();
-                return ReturnPoint (labl, Box::new(flatten_begin(Begin (exprs))));
+            ReturnPoint (labl, box mut tail) => {
+                tail = self.select_instruction_tail(unspills, tail);
+                return ReturnPoint (labl, Box::new(tail));
             }
             e => e,
         }
@@ -1219,8 +1234,7 @@ impl UncoverConflict for UncoverRegisterConflict {
 
     fn uncover_conflict(&self, mut conflict_graph: ConflictGraph, tail: Expr) -> Expr {
         let mut _callset = HashSet::new();
-        let mut _spills = HashSet::new();
-        let _liveset = self.tail_liveset(&tail, HashSet::new(), &mut conflict_graph, &mut _callset, &mut _spills);
+        let _liveset = self.tail_liveset(&tail, HashSet::new(), &mut conflict_graph, &mut _callset);
         return RegisterConflict (conflict_graph, Box::new(tail));
     }
 }
@@ -1442,9 +1456,9 @@ impl FinalizeFrameLocations {
                     Some (loc) => Symbol (loc.to_string()),
                 }
             },
-            ReturnPoint (labl, box Begin (mut exprs)) => {
-                exprs = exprs.into_iter().map(|e| self.finalize_frame_locations(bindings, e)).collect();
-                return ReturnPoint (labl, Box::new(Begin (exprs)));
+            ReturnPoint (labl, box mut tail) => {
+                tail = self.finalize_frame_locations(bindings, tail);
+                return ReturnPoint (labl, Box::new(tail));
             } 
             e => e,
         }
@@ -1592,6 +1606,12 @@ impl FinalizeLocations {
     }
 }
 
+pub struct UpdateFrameLocations {}
+impl UpdateFrameLocations {
+    pub fn run(&self, expr: Expr) -> Expr {
+        expr
+    }
+}
 
 pub struct ExposeBasicBlocks {}
 impl ExposeBasicBlocks {
@@ -2037,8 +2057,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("AssignNewFrame", &expr);
     let mut loop_id = 1;
     loop {
-        loop_id += 1;
         println!("The {}-th iteration", loop_id);
+        loop_id += 1;
 
         expr = FinalizeFrameLocations{}.run(expr);
         compile_formatter("FinalizeFrameLocations", &expr);
