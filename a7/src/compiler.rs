@@ -94,7 +94,7 @@ fn get_rp(name: &str) -> String {
 }
 
 fn get_rp_nontail(name: &str) -> String {
-    format!("rpnt${}", name.replace("$", ""))
+    format!("rpnt{}", name)
 }
 
 fn flatten_begin(expr: Expr) -> Expr {
