@@ -66,6 +66,10 @@ fn fv_to_index(fv: &str) -> usize {
     fv[2..].parse().unwrap()
 }
 
+fn uvar_to_label(uvar: &str) -> String {
+    uvar.replace(".", "$") 
+}
+
 fn gensym(prefix: &str) -> String {
     let uid = &Uuid::new_v4().to_string()[..8];
     let mut s = String::from(prefix);
@@ -90,7 +94,7 @@ fn get_rp(name: &str) -> String {
 }
 
 fn get_rp_nontail(name: &str) -> String {
-    format!("rpnt.{}", name.replace("$", ""))
+    format!("rpnt${}", name.replace("$", ""))
 }
 
 fn flatten_begin(expr: Expr) -> Expr {
@@ -1992,7 +1996,7 @@ impl CompileToAsm {
         match expr {
             Symbol (s) if is_reg(&s) => self.string_to_reg(&s),
             Symbol (s) if is_fv(&s) => self.fv_to_deref(&s),
-            Symbol (s) => Label (s),
+            Symbol (s) if is_label(&s) => Label (s),
             Int64 (i) => Imm (i),
             e => panic!("Expect Atom Expr, found {}", e),
         }
