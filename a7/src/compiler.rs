@@ -1629,9 +1629,12 @@ impl ExposeBasicBlocks {
     fn tail_helper(&self, e: Expr, new_lambdas: &mut Vec<Expr>) -> Expr {
         match e {
             Begin (mut exprs) => {
-                let tail = exprs.pop().unwrap();
-                let new_tail = self.tail_helper(tail, new_lambdas);
-                return self.effects_helper(exprs, new_tail, new_lambdas);
+                let mut tail = exprs.pop().unwrap();
+                tail = self.tail_helper(tail, new_lambdas);
+                while let Some(effect) = exprs.pop() {
+                    tail = self.effect_helper(effect, tail, new_lambdas);
+                }
+                return tail;
             }
             If (box Bool(true), box b1, _) => self.tail_helper(b1, new_lambdas),
             If (box Bool(false), _, box b2) => self.tail_helper(b2, new_lambdas),
@@ -1653,9 +1656,12 @@ impl ExposeBasicBlocks {
     fn pred_helper(&self, e: Expr, lab1: &str, lab2: &str, new_lambdas: &mut Vec<Expr>) -> Expr {
         match e {
             Begin (mut exprs) => {
-                let pred = exprs.pop().unwrap();
-                let new_pred = self.pred_helper(pred, lab1, lab2, new_lambdas);
-                return self.effects_helper(exprs, new_pred, new_lambdas);
+                let mut pred = exprs.pop().unwrap();
+                pred = self.pred_helper(pred, lab1, lab2, new_lambdas);
+                while let Some(effect) = exprs.pop() {
+                    pred = self.effect_helper(effect, pred, new_lambdas);
+                }
+                return pred;
             }
             Bool (true) => Funcall (lab1.to_string(), vec![]),
             Bool (false) => Funcall (lab2.to_string(), vec![]),
@@ -1674,19 +1680,13 @@ impl ExposeBasicBlocks {
         }
     }
 
-    fn effects_helper(&self, mut effects: Vec<Expr>, mut tail: Expr, new_lambdas: &mut Vec<Expr>) -> Expr {
-        while let Some(effect) = effects.pop() {
-            tail = self.effect_helper(effect, tail, new_lambdas);
-        }
-        return tail;
-    }
-
-    fn effect_helper(&self, effect: Expr, tail: Expr, new_lambdas: &mut Vec<Expr>) -> Expr {
+    fn effect_helper(&self, effect: Expr, mut tail: Expr, new_lambdas: &mut Vec<Expr>) -> Expr {
         match effect {
             Begin (mut exprs) => {
-                let effect = exprs.pop().unwrap();
-                let new_tail = self.effect_helper(effect, tail, new_lambdas); 
-                return self.effects_helper(exprs, new_tail, new_lambdas);
+                while let Some(effect) = exprs.pop() {
+                    tail = self.effect_helper(effect, tail, new_lambdas);
+                }
+                return tail;
             }
             If (box Bool(true), box b1, _) => self.effect_helper(b1, tail, new_lambdas),
             If (box Bool(false),  _, box b2) => self.effect_helper(b2, tail, new_lambdas),
