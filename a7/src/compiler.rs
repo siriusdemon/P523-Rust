@@ -1621,7 +1621,117 @@ impl FinalizeLocations {
 pub struct UpdateFrameLocations {}
 impl UpdateFrameLocations {
     pub fn run(&self, expr: Expr) -> Expr {
-        expr
+        match expr {
+            Letrec (mut lambdas, box mut tail) => {
+                lambdas = lambdas.into_iter().map(|e| self.helper(e)).collect();
+                tail = self.helper(tail);
+                return Letrec (lambdas, Box::new(tail));
+            }
+            e => panic!("Invalid Program {}", e),
+        }
+    }
+
+    fn helper(&self, expr: Expr) -> Expr {
+        match expr {
+            Lambda (labl, args, box tail) => {
+                let (tail, offset) = self.tail_helper(tail, 0);
+                return Lambda(labl, args, Box::new(tail));
+            }
+            tail => self.tail_helper(tail, 0).0,
+        } 
+    }
+
+    fn tail_helper(&self, tail: Expr, mut offset: i64) -> (Expr, i64) {
+        match tail {
+            Begin (mut exprs) => {
+                let mut tail = exprs.pop().unwrap();
+                let mut new_exprs = vec![];
+                for mut e in exprs {
+                    let (e, offset) = self.effect_helper(e, offset);
+                    new_exprs.push(e);
+                }
+                let (tail, offset) = self.tail_helper(tail, offset);
+                new_exprs.push(tail);
+                return (Begin (new_exprs), offset);
+            }
+            If (box pred, box b1, box b2) => {
+                let (new_pred, offset) = self.pred_helper(pred, offset);
+                let (new_b1, offset_b1) = self.tail_helper(b1, offset);
+                let (new_b2, offset_b2) = self.tail_helper(b2, offset);
+                assert_eq!(offset_b1, offset_b2);
+                return (if2(new_pred, new_b1, new_b2), offset_b1)
+            }
+            e => (e, offset),
+        }
+    }
+
+    fn pred_helper(&self, pred: Expr, mut offset: i64) -> (Expr, i64) {
+        match pred {
+            Begin (mut exprs) => {
+                let mut pred = exprs.pop().unwrap();
+                let mut new_exprs = vec![];
+                for mut e in exprs {
+                    let (e, offset) = self.effect_helper(e, offset);
+                    new_exprs.push(e);
+                }
+                let (pred, offset) = self.pred_helper(pred, offset);
+                new_exprs.push(pred);
+                return (Begin (new_exprs), offset);
+            }
+            If (box pred, box b1, box b2) => {
+                let (new_pred, offset) = self.pred_helper(pred, offset);
+                let (new_b1, offset_b1) = self.pred_helper(b1, offset);
+                let (new_b2, offset_b2) = self.pred_helper(b2, offset);
+                assert_eq!(offset_b1, offset_b2);
+                return (if2(new_pred, new_b1, new_b2), offset_b1);
+            }
+            e => (e, offset),
+        }
+    }
+
+    fn effect_helper(&self, effect: Expr, mut offset: i64) -> (Expr, i64) {
+        match effect {
+            Begin (mut exprs) => {
+                let mut new_exprs = vec![];
+                for mut e in exprs {
+                    let (e, offset) = self.effect_helper(e, offset);
+                    new_exprs.push(e);
+                }
+                return (Begin (new_exprs), offset);
+            }
+            If (box pred, box b1, box b2) => {
+                let (new_pred, offset) = self.effect_helper(pred, offset);
+                let (new_b1, offset_b1) = self.effect_helper(b1, offset);
+                let (new_b2, offset_b2) = self.effect_helper(b2, offset);
+                assert_eq!(offset_b1, offset_b2);
+                return (if2(new_pred, new_b1, new_b2), offset_b1);
+            }
+            Set (box Symbol (fp), box Prim2 (op, box sym_fp, box Int64 (i))) if fp.as_str() == FRAME_POINTER_REGISTER => {
+                match op.as_str() {
+                    "+" => (set2(Symbol (fp), op, sym_fp, Int64 (i)), offset + i),
+                    "-" => (set2(Symbol (fp), op, sym_fp, Int64 (i)), offset - i),
+                    any => panic!("Invalid op on fp {}", any),
+                }
+            }
+            ReturnPoint (labl, box Begin (mut exprs)) => {
+                let tail = exprs.pop().unwrap();
+                let mut new_exprs = vec![];
+                let mut exprs_iter = exprs.into_iter();
+                while let Some(Set (box Symbol (s), box any)) = exprs_iter.next() {
+                    let set_expr = if is_fv(&s) {
+                        let mut fidx = fv_to_index(&s); 
+                        fidx = fidx - (offset as usize >> ALIGN_SHIFT);
+                        set1 (Symbol (FRAME_VARS[fidx].to_string()), any)
+                    } else {
+                        set1 (Symbol (s), any)
+                    };
+                    new_exprs.push(set_expr);
+                }
+                new_exprs.push(tail);
+                return (ReturnPoint (labl, Box::new(Begin (new_exprs))), offset);
+            }
+            e => (e, offset),
+        }
     }
 }
 
@@ -2092,6 +2202,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("DiscardCallLive", &expr);
     let expr = FinalizeLocations{}.run(expr);
     compile_formatter("Finalizelocations", &expr);
+    let expr = UpdateFrameLocations{}.run(expr);
+    compile_formatter("UpdateFrameLocations", &expr);
     let expr = ExposeBasicBlocks{}.run(expr);
     compile_formatter("ExposeBasicBlocks", &expr);
     let expr = OptimizeJump{}.run(expr);
