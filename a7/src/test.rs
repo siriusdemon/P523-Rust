@@ -454,91 +454,100 @@ fn compile27() {
           (* a.2 (* b.3 (+ c.4 0))))))";
     test_helper(s, "c27.s", "479925\n");
 }
-// /     (letrec ([fact$0 (lambda (n.1)
-//                        (locals (t.2 t.3)
-//                          (if (= n.1 0)
-//                              1
-//                              (begin
-//                                (set! t.2 (- n.1 1))
-//                                (set! t.3 (fact$0 t.2))
-//                                (* n.1 t.3)))))])
-//       (locals () (fact$0 10)))
-//     (letrec ([fib$0 (lambda (n.1)
-//                       (locals ()
-//                         (if (if (= 0 n.1) (true) (= 1 n.1))
-//                             1
-//                             (+ (fib$0 (- n.1 1)) (fib$0 (- n.1 2))))))])
-//       (locals () (fib$0 10)))
-//     (letrec ([even$0 (lambda (n.1)
-//                        (locals ()
-//                          (if (= n.1 0)
-//                              1
-//                              (odd$1 (- n.1 1)))))]
-//              [odd$1 (lambda (n.1)
-//                       (locals ()
-//                         (if (= n.1 0)
-//                             0
-//                             (even$0 (- n.1 1)))))])
-//       (locals () (even$0 17)))
-//      (letrec ()
-//        (locals (x.1 y.2 result.3)
-//          (begin
-//            (set! result.3 (+ (if (begin 
-//                                    (set! x.1 5) 
-//                                    (set! y.2 10)
-//                                    (< 11 x.1))
-//                                  (+ x.1 y.2)
-//                                  (+ y.2 100))
-//                              (begin
-//                                (set! x.1 10)
-//                                (set! y.2 20)
-//                                (* x.1 y.2))))
-//            result.3)))
-//      (letrec ()
-//        (locals (x.5) 
-//          (begin (set! x.5 5) x.5)))
-//      (letrec ()
-//        (locals (x.5 y.6)
-//          (begin
-//            (set! x.5 5)
-//            (set! y.6 6)
-//            (+ x.5 y.6))))
-//      (letrec ([div$0 (lambda (x.1)
-//                        (locals ()
-//                          (begin 
-//                            (set! x.1 (sra x.1 1)) 
-//                            (div$1 x.1))))]
-//               [div$1 (lambda (result.1)
-//                        (locals () result.1))])
-//        (locals (label-temp.1)
-//          (begin
-//            (set! label-temp.1 div$0)
-//            (label-temp.1 64))))
-//      ;; Slow division
-//      (letrec ([expt$0 (lambda (n.1 m.2)
-//                         (locals ()
-//                           (if (= m.2 1)
-//                               n.1
-//                               (* n.1 (expt$0 n.1 (- m.2 1))))))]
-//               [div$1 (lambda (n.1 d.2)
-//                        (locals ()
-//                          (div-helper$2 31 (- (* 2 n.1) d.2) 
-//                                        (* d.2 (expt$0 2 32)) 0)))]
-//               [div-helper$2 (lambda (i.1 p.2 d.3 q.4)
-//                               (locals ()
-//                                 (if (> 0 i.1)
-//                                     q.4
-//                                     (if (>= p.2 0)
-//                                         (div-helper$2 (- i.1 1)
-//                                                       (- (* 2 p.2) d.3)
-//                                                       d.3
-//                                                       (logor (expt$0 2 i.1)
-//                                                              q.4))
-//                                         (div-helper$2 (- i.1 1)
-//                                                       (- (* 2 (+ p.2 d.3)) d.3)
-//                                                       d.3
-//                                                       q.4)))))])
-//        (locals () (div$1 153 17)))
+
+#[test]
+fn compile28() {
+    let s = "
+    (letrec ([fact$0 (lambda (n.1)
+                       (locals (t.2 t.3)
+                         (if (= n.1 0)
+                             1
+                             (begin
+                               (set! t.2 (- n.1 1))
+                               (set! t.3 (fact$0 t.2))
+                               (* n.1 t.3)))))])
+      (locals () (fact$0 10)))";
+    test_helper(s, "c28.s", "3628800\n");
+}
+
+#[test]
+fn compile29() {
+    let s = "
+    (letrec ([fib$0 (lambda (n.1)
+                      (locals ()
+                        (if (if (= 0 n.1) (true) (= 1 n.1))
+                            1
+                            (+ (fib$0 (- n.1 1)) (fib$0 (- n.1 2))))))])
+      (locals () (fib$0 10)))";
+    test_helper(s, "c29.s", "89\n");
+}
+
+#[test]
+fn compile30() {
+    let s = "
+    (letrec ([even$0 (lambda (n.1)
+                       (locals ()
+                         (if (= n.1 0)
+                             1
+                             (odd$1 (- n.1 1)))))]
+             [odd$1 (lambda (n.1)
+                      (locals ()
+                        (if (= n.1 0)
+                            0
+                            (even$0 (- n.1 1)))))])
+      (locals () (even$0 17)))";
+    test_helper(s, "c30.s", "0\n");
+}
+#[test]
+fn compile31() {
+    let s = "
+     (letrec ()
+       (locals (x.5) 
+         (begin (set! x.5 5) x.5)))";
+    test_helper(s, "c31.s", "5\n");
+}
+
+#[test]
+fn compile32() {
+    let s = "
+     (letrec ()
+       (locals (x.5 y.6)
+         (begin
+           (set! x.5 5)
+           (set! y.6 6)
+           (+ x.5 y.6))))";
+    test_helper(s, "c32.s", "11\n");
+}
+
+#[test]
+fn compile33() {
+    let s = "
+     (letrec ([expt$0 (lambda (n.1 m.2)
+                        (locals ()
+                          (if (= m.2 1)
+                              n.1
+                              (* n.1 (expt$0 n.1 (- m.2 1))))))]
+              [div$1 (lambda (n.1 d.2)
+                       (locals ()
+                         (div-helper$2 31 (- (* 2 n.1) d.2) 
+                                       (* d.2 (expt$0 2 32)) 0)))]
+              [div-helper$2 (lambda (i.1 p.2 d.3 q.4)
+                              (locals ()
+                                (if (> 0 i.1)
+                                    q.4
+                                    (if (>= p.2 0)
+                                        (div-helper$2 (- i.1 1)
+                                                      (- (* 2 p.2) d.3)
+                                                      d.3
+                                                      (logor (expt$0 2 i.1)
+                                                             q.4))
+                                        (div-helper$2 (- i.1 1)
+                                                      (- (* 2 (+ p.2 d.3)) d.3)
+                                                      d.3
+                                                      q.4)))))])
+       (locals () (div$1 153 17)))";
+    test_helper(s, "c33.s", "9\n");
+}
 //      (letrec ([setbit3$0 (lambda (x.1)
 //                            (locals ()
 //                              (begin
