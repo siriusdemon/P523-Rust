@@ -94,7 +94,8 @@ fn get_rp(name: &str) -> String {
 }
 
 fn get_rp_nontail(name: &str) -> String {
-    format!("rpnt{}", name)
+    let salt = gensym("");
+    format!("rpnt{}{}", name, salt)
 }
 
 fn flatten_begin(expr: Expr) -> Expr {
@@ -1123,6 +1124,9 @@ impl SelectInstructions {
                 }
                 return self.rewrite(a, op, Symbol (b), Int64 (i), unspills);
             }
+            Set (box Symbol (a), box Prim2 (op, box Int64 (i1), box Int64 (i2))) => {
+                return self.set2_int_rewrite(a, op, Int64 (i1), Int64 (i2));
+            }
             Set (box Symbol (a), box Symbol (b)) => {
                 return self.set1_fv_rewrite(a, b, unspills);
             }
@@ -1183,6 +1187,12 @@ impl SelectInstructions {
             return Begin (vec![expr1, expr2]);
         } 
         return set2(Symbol (a), op, Symbol (b), Symbol (c));
+    }
+
+    fn set2_int_rewrite(&self, a: String, op: String, b: Expr, c: Expr) -> Expr {
+        let expr1 = set1(Symbol (a.clone()), b); 
+        let expr2 = set2(Symbol (a.clone()), op, Symbol (a), c);
+        return Begin (vec![expr1, expr2]);
     }
     
     fn rewrite(&self, a: String, op: String, b: Expr, c: Expr, unspills: &mut HashSet<String>) -> Expr {
