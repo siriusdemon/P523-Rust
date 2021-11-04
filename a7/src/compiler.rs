@@ -659,9 +659,11 @@ pub trait UncoverConflict {
         match tail {
             Funcall (labl, args) => {
                 for a in args {
-                    if let Symbol(s) = a { if self.type_verify(s) {
-                        liveset.insert(s.to_string()); 
-                    }}
+                    if let Symbol(s) = a { 
+                        if self.type_verify(s) {
+                            liveset.insert(s.to_string()); 
+                        }
+                    }
                 }
                 if self.type_verify(labl) || is_uvar(labl) {
                     liveset.insert(labl.to_string());
@@ -764,24 +766,20 @@ pub trait UncoverConflict {
                 return liveset;
             }
             ReturnPoint (labl, box tail) => {
-                liveset = self.tail_liveset(tail, liveset, conflict_graph, call_live);
                 if let Begin (exprs) = tail {
                     let exprs_slice = exprs.as_slice();
                     let last = exprs_slice.len() - 1;
-                    // collect call-live here
                     if let Funcall (lab, args) = &exprs_slice[last] {
-                        for a in args { 
-                            if let Symbol (s) = a {
-                                liveset.insert(s.to_string());
-                                if is_fv(s) || is_uvar(s) {
-                                    call_live.insert(a.to_string()); 
-                                }
-                            }
-                        } 
-                    } else {
-                        panic!("expect a Funcall, got {}", exprs_slice[last]);
+                        for a in args { if let Symbol (s) = a {
+                            liveset.insert(s.to_string());
+                        }} 
+                        // I will collect here
+                        for live in liveset.iter() { if is_fv(live) || is_uvar(live) {
+                            call_live.insert(live.to_string());
+                        }}
                     }
                 }
+                liveset = self.tail_liveset(tail, liveset, conflict_graph, call_live);
                 return liveset;
             } 
             e => liveset,
