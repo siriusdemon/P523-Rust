@@ -23,11 +23,11 @@ total               : 492
 ```
 
 
-Firstly, you should read the main.rs. It include other module, use a single interface `compile` to compile the promgram. The result is saved in "t.s".
+Firstly, you should read the main.rs. It includes other modules, use a single interface `compile` to compile the program. The result is saved in "t.s".
 
-Then, read the syntax.rs. There are two enum there. One is Expr, another is Asm. Your goal is to transform the Expr code into Asm code. The trait `Display` impl for Expr is for debug purpose, for Asm is for generating asemble code.
+Then, read the syntax.rs. There are two enums there. One is Expr, another is Asm. Your goal is to transform the Expr code into Asm code. The trait `Display` impl for Expr is for debug purpose, and for Asm is for generating assemble code.
 
-And then you are ready to read parser.rs. Or you can just skip it if you don't care. You can copy mine into your folder. The parser simply transforms the string-form program into an Expr.
+And then you are ready to read parser.rs. Or you can just skip it if you don't care. You can copy mine into your folder. The parser simply transforms the string-form program into an abstract-syntax-tree Expr.
 
 It is time to write your own Pass in compiler.rs. Since A1 is really simple, you are expected to understand the whole transformation. After that, you are really really ready for the P523 adventure.
 
