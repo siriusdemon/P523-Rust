@@ -763,6 +763,10 @@ pub trait UncoverConflict {
                 return liveset;
             }
             ReturnPoint (labl, box tail) => {
+                // I will collect here, before any update to liveset
+                for live in liveset.iter() { if is_fv(live) || is_uvar(live) {
+                    call_live.insert(live.to_string());
+                }}
                 if let Begin (exprs) = tail {
                     let exprs_slice = exprs.as_slice();
                     let last = exprs_slice.len() - 1;
@@ -770,10 +774,6 @@ pub trait UncoverConflict {
                         for a in args { if let Symbol (s) = a {
                             liveset.insert(s.to_string());
                         }} 
-                        // I will collect here
-                        for live in liveset.iter() { if is_fv(live) || is_uvar(live) {
-                            call_live.insert(live.to_string());
-                        }}
                     }
                 }
                 liveset = self.tail_liveset(tail, liveset, conflict_graph, call_live);
@@ -1981,7 +1981,7 @@ impl CompileToAsm {
                     Push (Box::new(R14)),
                     Push (Box::new(R15)),
                     self.op2("movq", RDI, RBP),
-                    self.op2("leaq", DerefLabel(Box::new(RIP), "_scheme_exit".to_string()), self.string_to_reg(RETRUN_ADDRESS_REGISTER)),
+                    self.op2("leaq", DerefLabel(Box::new(RIP), Box::new(Label ("_scheme_exit".to_string()))), self.string_to_reg(RETRUN_ADDRESS_REGISTER)),
                 ];
                 codes.append(&mut self.tail_to_asm(tail));
                 let cfg = Cfg(label, codes);
@@ -2070,7 +2070,7 @@ impl CompileToAsm {
     fn expr_to_asm(&self, expr: Expr) -> Asm {
         match expr {
             Set (box Symbol(dst), box Symbol(src)) if is_label(&src) && is_reg(&dst) => {
-                let src = DerefLabel (Box::new(RIP), src);                
+                let src = DerefLabel (Box::new(RIP), Box::new(Label (src)));                
                 let dst = self.string_to_reg(&dst);
                 return self.op2("leaq", src, dst);
             },

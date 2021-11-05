@@ -150,7 +150,7 @@ pub enum Asm {
     Imm(i64),
     Label(String),
     Deref(Box<Asm>, i64),
-    DerefLabel(Box<Asm>, String),
+    DerefLabel(Box<Asm>, Box<Asm>),
     Op2(String, Box<Asm>, Box<Asm>),
     Retq,
     Cfg(String, Vec<Asm>),
@@ -176,11 +176,11 @@ impl fmt::Display for Asm {
             Op2 (op, box e1, box e2) => write!(f, "\t{} {}, {}\n", op, e1, e2),
             Deref (box reg, n) => write!(f, "{}({})", n, reg),
             DerefLabel (box reg, s) => write!(f, "{}({})", s, reg),
-            Label (s) => write!(f, "{}", s.replace("-", "_")),
+            Label (s) => write!(f, "{}", s.replace("-", "_").replace("?", "q")),
             Retq => write!(f, "\tretq\n"),
             Push (box a) => write!(f, "\tpushq {}\n", a),
             Pop (box a) => write!(f, "\tpopq {}\n", a),
-            Jmp (box Label(s)) => write!(f, "\tjmp {}\n", s.replace("-", "_")),
+            Jmp (box Label(s)) => write!(f, "\tjmp {}\n", s.replace("-", "_").replace("?", "q")),
             Jmp (box other) => write!(f, "\tjmp *{}\n", other),
             Jmpif (cc, box Label(s)) => write!(f, "\tj{} {}\n", cc, s),
             Jmpif (cc, other) => write!(f, "\tj{} *{}\n", cc, other),
@@ -189,7 +189,7 @@ impl fmt::Display for Asm {
                 for code in codes {
                     codes_str.push_str( &format!("{}", code) );
                 }
-                return write!(f, "{}:\n{}", labl.replace("-", "_"), codes_str);
+                return write!(f, "{}:\n{}", labl.replace("-", "_").replace("?", "q"), codes_str);
             }
             Prog (cfgs) => {
                 let mut codes_str = String::new();

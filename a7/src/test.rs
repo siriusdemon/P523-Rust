@@ -548,467 +548,493 @@ fn compile33() {
        (locals () (div$1 153 17)))";
     test_helper(s, "c33.s", "9\n");
 }
-//      (letrec ([setbit3$0 (lambda (x.1)
-//                            (locals ()
-//                              (begin
-//                                (set! x.1 (logor x.1 8))
-//                                (return$1 x.1))))]
-//               [return$1 (lambda (x.1)
-//                           (locals ()
-//                             (begin x.1)))])
-//        (locals ()
-//          (begin (setbit3$0 1))))
-//      (letrec ([zero?$0 (lambda (n.1)
-//                          (locals (x.5)
-//                            (begin
-//                              (set! x.5 0)
-//                              (set! x.5 (- x.5 n.1))
-//                              (set! x.5 (sra x.5 63))
-//                              (set! x.5 (logand x.5 1))
-//                              (return$1 x.5))))]
-//               [return$1 (lambda (x.5)
-//                           (locals () x.5))])
-//        (locals () (zero?$0 5)))
-//      (letrec ([sqr-double$0 (lambda (z.5)
-//                               (locals ()
-//                                 (begin
-//                                   (set! z.5 (* z.5 z.5))
-//                                   (double$1 z.5))))]
-//               [double$1 (lambda (w.4)
-//                           (locals ()
-//                             (begin
-//                               (set! w.4 (+ w.4 w.4))
-//                               (return$3 w.4))))]
-//               [return$3 (lambda (result.1)
-//                           (locals () result.1))])
-//        (locals () (begin (sqr-double$0 3) (sqr-double$0 5))))
-//      ;; test interaction of already assigned frame-vars and
-//      ;; register allocator
-//      (letrec ([square$1 (lambda (x.1)
-//                           (locals ()
-//                             (begin (* x.1 x.1))))])
-//        (locals () (square$1 7)))
-//     ;;; Make sure effect ordering is preserved
-//     (letrec ([sum$1 (lambda (x.1 y.2 z.3 w.4)
-//                       (locals ()
-//                         (+ x.1 (+ y.2 (+ z.3 w.4)))))])
-//       (locals (a.1)
-//         (sum$1 (begin (set! a.1 1) a.1)
-//                (begin (set! a.1 2) a.1)
-//                (begin (set! a.1 3) a.1)
-//                (begin (set! a.1 4) a.1))))
+
+#[test]
+fn compile34() {
+    let s = "
+     (letrec ([setbit3$0 (lambda (x.1)
+                           (locals ()
+                             (begin
+                               (set! x.1 (logor x.1 8))
+                               (return$1 x.1))))]
+              [return$1 (lambda (x.1)
+                          (locals ()
+                            (begin x.1)))])
+       (locals ()
+         (begin (setbit3$0 1))))";
+    test_helper(s, "c34.s", "9\n");
+
+}
+
+#[test]
+fn compile35() {
+    let s = "
+    (letrec ([zero?$0 (lambda (n.1)
+                         (locals (x.5)
+                           (begin
+                             (set! x.5 0)
+                             (set! x.5 (- x.5 n.1))
+                             (set! x.5 (sra x.5 63))
+                             (set! x.5 (logand x.5 1))
+                             (return$1 x.5))))]
+              [return$1 (lambda (x.5)
+                          (locals () x.5))])
+       (locals () (zero?$0 5)))";
+    test_helper(s, "c35.s", "1\n");
+}
+
+#[test]
+fn compile36() {
+    let s = "
+     (letrec ([sqr-double$0 (lambda (z.5)
+                              (locals ()
+                                (begin
+                                  (set! z.5 (* z.5 z.5))
+                                  (double$1 z.5))))]
+              [double$1 (lambda (w.4)
+                          (locals ()
+                            (begin
+                              (set! w.4 (+ w.4 w.4))
+                              (return$3 w.4))))]
+              [return$3 (lambda (result.1)
+                          (locals () result.1))])
+       (locals () (begin (sqr-double$0 3) (sqr-double$0 5))))";
+    test_helper(s, "c36.s", "50\n");
+}
+
+#[test]
+fn compile37() {
+    let s = "
+      (letrec ([square$1 (lambda (x.1)
+                          (locals ()
+                            (begin (* x.1 x.1))))])
+       (locals () (square$1 7)))";
+    test_helper(s, "c37.s", "49\n");
+}
 //    ; test nontail calls w/several arguments
-//     (letrec ([f$1 (lambda (n.2 a.3 b.4 c.5 x.6)
-//                     (locals ()
-//                       (if (= n.2 0)
-//                           (+ (* a.3 (* x.6 x.6)) (+ (* b.4 x.6) c.5))
-//                           (+ (f$1 (sra n.2 3)
-//                                   (+ a.3 (logand n.2 4))
-//                                   (+ b.4 (logand n.2 2))
-//                                   (+ c.5 (logand n.2 1))
-//                                   x.6)
-//                              1))))])
-//       (locals () (f$1 16434824 1 0 -1 7)))
-//     (letrec ([f$1 (lambda (n.2 a.3 b.4 c.5 x.6)
-//                     (locals ()
-//                       (if (= n.2 0)
-//                           (+ (* a.3 (* x.6 x.6)) (+ (* b.4 x.6) c.5))
-//                           (- (f$1 (sra n.2 3)
-//                                   (+ a.3 (logand n.2 4))
-//                                   (+ b.4 (logand n.2 2))
-//                                   (+ c.5 (logand n.2 1))
-//                                   x.6)
-//                              (g$0 n.2 a.3 b.4 c.5)))))]
-//              [g$0 (lambda (n.7 a.8 b.9 c.10)
-//                     (locals () (+ (- n.7 a.8) (- b.9 c.10))))])
-//       (locals () (f$1 16434824 1 0 -1 7)))
-//     (letrec ([square$0 (lambda (n.1) (locals () (* n.1 n.1)))])
-//       (locals () (square$0 10)))
-//     (letrec ([fact$0 (lambda (n.1)
-//                        (locals ()
-//                          (fact$1 n.1 1)))]
-//              [fact$1 (lambda (n.1 a.2)
-//                        (locals ()
-//                          (if (= n.1 0)
-//                              a.2
-//                              (fact$1 (- n.1 1) (* n.1 a.2)))))])
-//       (locals () (fact$0 10)))
-//     (letrec ([gcd$0 (lambda (x.1 y.2)
-//                       (locals ()
-//                         (if (= y.2 0) 
-//                             x.1 
-//                             (gcd$0 (if (> x.1 y.2) (- x.1 y.2) x.1)
-//                                    (if (> x.1 y.2) y.2 (- y.2 x.1))))))])
-//       (locals () (gcd$0 1071 1029)))
 
-//     (letrec ([sub1$1 (lambda (n.1) (locals () (- n.1 1)))]
-//              [fib$0 (lambda (n.1)
-//                       (locals ()
-//                         (if (= 0 n.1)
-//                             0
-//                             (if (= 1 n.1)
-//                                 1
-//                                 (+ (fib$0 (sub1$1 n.1))
-//                                    (fib$0 (sub1$1 (sub1$1 n.1))))))))])
-//       (locals () (fib$0 10)))
-//     (letrec ([ack$0 (lambda (m.1 n.2)
-//                       (locals (tmp.3)
-//                         (if (= m.1 0)
-//                             (+ n.2 1)
-//                             (if (if (> m.1 0) (= n.2 0) (false))
-//                                 (ack$0 (- m.1 1) 1)
-//                                 (begin
-//                                   (set! tmp.3 (ack$0 m.1 (- n.2 1)))
-//                                   (ack$0 (- m.1 1) tmp.3))))))])
-//       (locals () (ack$0 2 4)))
-//     (letrec ([ack$0 (lambda (m.1 n.2)
-//                       (locals ()
-//                         (if (= m.1 0)
-//                             (+ n.2 1)
-//                             (if (if (> m.1 0) (= n.2 0) (false))
-//                                 (ack$0 (- m.1 1) 1)
-//                                 (ack$0 (- m.1 1) (ack$0 m.1 (- n.2 1)))))))])
-//       (locals () (ack$0 2 4)))
-//     (letrec ([fib$0 (lambda (n.1) (locals () (fib$1 n.1 0 1)))]
-//              [fib$1 (lambda (n.1 a.2 b.3)
-//                       (locals ()
-//                         (if (= n.1 0)
-//                             a.2
-//                             (fib$1 (- n.1 1) b.3 (+ b.3 a.2)))))])
-//       (locals () (fib$0 5)))
-//     (letrec ([if-test$1 (lambda ()
-//                            (locals (x.5)
-//                              (* (if (begin (set! x.5 5) (= x.5 5))
-//                                     (+ x.5 10)
-//                                     (- x.5 10)) 10)))])
-//        (locals () (if-test$1)))
-//     (letrec ([if-test$2 (lambda ()
-//                            (locals (x.5)
-//                              (begin
-//                                (set! x.5 (if (begin
-//                                                (set! x.5 7)
-//                                                (if (< x.5 1)
-//                                                    (false)
-//                                                    (< x.5 10)))
-//                                            (* x.5 2)
-//                                            (+ x.5 5)))
-//                                x.5)))])
-//        (locals () (if-test$2)))
-//     (letrec ([if-test$3 (lambda (n.1)
-//                            (locals ()
-//                              (begin
-//                                (if (if (= n.1 0)
-//                                        (true)
-//                                        (if (= n.1 1) (true) (= n.1 2)))
-//                                    (* n.1 5)
-//                                    (- n.1 5)))))])
-//        (locals () (if-test$3 2)))
-//     (letrec ([if-test$4 (lambda (x.5)
-//                            (locals ()
-//                              (begin
-//                                (* (if (if (= x.5 10) (false) (true))
-//                                       (+ x.5 10)
-//                                       (- x.5 2))
-//                                   10))))])
-//       (locals () (if-test$4 2)))
-//     (letrec ([if-test$5 (lambda (n.1 x.2 y.3)
-//                            (locals ()
-//                              (begin
-//                                (if (= n.1 0)
-//                                    (set! x.2 (+ x.2 y.3))
-//                                    (set! y.3 (+ y.3 x.2)))
-//                                (set! x.2 (+ x.2 n.1))
-//                                (if (if (= n.1 y.3) (false) (true))
-//                                    (+ n.1 x.2)
-//                                    (+ n.1 y.3)))))])
-//        (locals () (begin (if-test$5 1 1 1))))
-//     (letrec ([if-test$6 (lambda (n.1)
-//                            (locals (x.2 y.3)
-//                              (begin
-//                                (set! x.2 1)
-//                                (begin
-//                                  (set! y.3 1)
-//                                  (if (= n.1 0)
-//                                      (set! x.2 (+ x.2 y.3))
-//                                      (set! y.3 (+ y.3 x.2)))
-//                                  (set! x.2 (+ x.2 n.1)))
-//                                (if (if (= n.1 y.3) (false) (true))
-//                                    (set! n.1 (+ n.1 x.2))
-//                                    (set! n.1 (+ n.1 y.3)))
-//                                (+ x.2 n.1))))])
-//        (locals ()(if-test$6 1)))
-//     (letrec ()
-//        (locals (x.1 y.2 z.3)
-//          (begin
-//            (set! x.1 0)
-//            (set! y.2 1)
-//            (if (if (= x.1 0) (= y.2 1) (false))
-//                (set! z.3 5)
-//                (begin (set! z.3 5) (set! z.3 (+ z.3 z.3))))
-//            z.3)))
-//     (letrec ()
-//        (locals (a.1 b.2 c.3)
-//          (begin
-//            (set! a.1 0)
-//            (set! b.2 0)
-//            (if (if (= a.1 0) (= b.2 1) (false))
-//                (set! c.3 5)
-//                (begin (set! c.3 5) (set! c.3 (+ c.3 c.3))))
-//            c.3)))
-//     (letrec ([main$0 (lambda (x.1 y.2)
-//                        (locals (z.3)
-//                          (begin
-//                            (if (if (= x.1 1) (true) (= y.2 1))
-//                                (set! z.3 1)
-//                                (set! z.3 0))
-//                            (* z.3 5))))])
-//       (locals () (main$0 1 0)))
-//     (letrec ([main$0 (lambda (a.1 b.2)
-//                        (locals (c.3)
-//                          (begin
-//                            (set! c.3 
-//                              (if (if (= a.1 1) (true) (= b.2 1))
-//                                  1
-//                                  0))
-//                            (+ c.3 5))))])
-//       (locals () (main$0 0 1)))
-//     (letrec ([main$0 (lambda (a.1 b.2)
-//                        (locals ()
-//                          (begin
-//                            (if (if (= a.1 1) (= b.2 1) (true))
-//                                (set! a.1 1)
-//                                (set! b.2 0))
-//                            (set! b.2 (* b.2 10))
-//                            (set! a.1 (+ a.1 b.2))
-//                            a.1)))])
-//        (locals () (main$0 0 1)))
-//     (letrec ([main$0 (lambda (a.1 b.2)
-//                        (locals ()
-//                          (if (if (= a.1 1) (= b.2 1) (true)) 1 0)))])
-//       (locals () (main$0 1 0)))
-//     (letrec ([main$0 (lambda (a.1 b.2)
-//                        (locals ()
-//                          (if (if (= a.1 1) (= b.2 1) (true)) 1 0)))])
-//       (locals () (main$0 0 0)))
-//     (letrec ()
-//        (locals (a.1 b.2)
-//          (begin
-//            (set! a.1 1)
-//            (set! b.2 1)
-//            (if (if (= a.1 1) (= b.2 1) (true)) 1 0))))
-//     (letrec ()
-//       (locals (n.1 a.2 b.3 c.4)
-//         (begin
-//           (set! n.1 1)
-//           (begin
-//             (set! a.2 2)
-//             (begin
-//               (set! b.3 3)
-//               (set! n.1 (+ n.1 (if (= (+ n.1 b.3) b.3) 5 10)))
-//               (set! n.1 (+ n.1 b.3)))
-//             (set! n.1 (+ n.1 a.2)))
-//           (+ n.1 n.1))))
-//     (letrec ()
-//        (locals (a.1 b.2 c.3 d.4 e.5)
-//          (begin
-//            (set! a.1 1)
-//            (set! b.2 2)
-//            (set! c.3 3)
-//            (set! d.4 4)
-//            (set! e.5 5)
-//            (+ (+ (+ (+ e.5 d.4) c.3) b.2) a.1))))
-//     (letrec ()
-//        (locals (a.1 b.2 c.3 d.4 e.5 f.6)
-//          (begin
-//            (set! a.1 1)
-//            (set! b.2 2)
-//            (set! c.3 3)
-//            (set! d.4 4)
-//            (set! e.5 5)
-//            (set! f.6 6)
-//            (set! a.1 
-//              (if (> (+ a.1 d.4) f.6)
-//                (* a.1 (+ c.3 f.6))
-//                (* a.1 (+ b.2 e.5))
-//                ))
-//            a.1)))
-//     (letrec ([dot$0 (lambda (a.1 a.2 a.3 a.4 b.5 b.6 b.7 b.8)
-//                       (locals ()
-//                         (+ (* a.1 b.5) 
-//                            (+ (* a.2 b.6) 
-//                               (+ (* a.3 b.7) (* a.4 b.8))))))])
-//       (locals () (dot$0 2 4 6 8 1 3 5 7)))
-//     (letrec ([dot-double-first$1 (lambda (a.1 a.2 a.3 a.4 b.5 b.6 b.7 b.8)
-//                                    (locals ()
-//                                      (dot$0 (+ a.1 a.1) (+ a.2 a.2)
-//                                             (+ a.3 a.3) (+ a.4 a.4)
-//                                             b.5 b.6 b.7 b.8)))]
-//              [dot$0 (lambda (a.1 a.2 a.3 a.4 b.5 b.6 b.7 b.8)
-//                       (locals ()
-//                         (+ (* a.1 b.5) 
-//                            (+ (* a.2 b.6) 
-//                               (+ (* a.3 b.7) (* a.4 b.8))))))])
-//       (locals () (dot-double-first$1 2 4 6 8 1 3 5 7)))
-//     (letrec ([dot-double-first$1 (lambda (a.1 a.2 a.3 a.4 b.5 b.6 b.7 b.8)
-//                                    (locals ()
-//                                      (begin
-//                                        (set! a.1 (+ a.1 a.1))
-//                                        (set! a.2 (+ a.2 a.2))
-//                                        (set! a.3 (+ a.3 a.3))
-//                                        (set! a.4 (+ a.4 a.4))
-//                                        (dot$0 a.1 a.2 a.3 a.4
-//                                               b.5 b.6 b.7 b.8))))]
-//              [dot$0 (lambda (a.1 a.2 a.3 a.4 b.5 b.6 b.7 b.8)
-//                       (locals ()
-//                         (+ (* a.1 b.5) 
-//                            (+ (* a.2 b.6) 
-//                               (+ (* a.3 b.7) (* a.4 b.8))))))])
-//       (locals () (dot-double-first$1 2 4 6 8 1 3 5 7)))
-     
-//     ;; stress the register allocator, but not so much that it needs to spill.
-//     (letrec ()
-//       (locals (a.1 b.2 c.3 d.4 e.5 f.6 g.7 h.8 i.9 j.10 k.11 l.12 m.13 n.14 
-//                o.15 p.16 q.17 r.18 s.19 t.20 u.21 v.22 w.23 x.24 y.25 z.26)
-//         (begin
-//           (set! a.1 1)
-//           (set! b.2 2)
-//           (set! c.3 3)
-//           (set! d.4 4)
-//           (set! e.5 5)
-//           (set! f.6 6)
-//           (set! g.7 7)
-//           (set! h.8 8)
-//           (set! i.9 9)
-//           (set! j.10 10)
-//           (set! k.11 11)
-//           (set! l.12 12)
-//           (set! m.13 13)
-//           (set! a.1 (+ (- (+ a.1 b.2) (+ (- c.3 d.4) e.5)) f.6))
-//           (set! a.1 (+ (- a.1 g.7) (+ h.8 (- i.9 (+ j.10 k.11)))))
-//           (set! a.1 (+ a.1 (+ l.12 m.13)))
-//           (set! n.14 14)
-//           (set! o.15 15)
-//           (set! p.16 16)
-//           (set! q.17 17)
-//           (set! r.18 18)
-//           (set! s.19 19)
-//           (set! t.20 20)
-//           (set! u.21 21)
-//           (set! v.22 22)
-//           (set! w.23 23)
-//           (set! x.24 24)
-//           (set! y.25 25)
-//           (set! a.1 (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ a.1 n.14) o.15) p.16)
-//                        q.17) r.18) s.19) t.20) u.21) v.22) w.23) x.24) y.25))
-//           (set! z.26 26)
-//           (set! b.2 27)
-//           (set! c.3 28)
-//           (set! d.4 29)
-//           (set! e.5 30)
-//           (set! f.6 31)
-//           (set! g.7 32)
-//           (set! h.8 33)
-//           (set! i.9 34)
-//           (set! j.10 35)
-//           (set! k.11 36)
-//           (set! l.12 37)
-//           (+ a.1 (+ z.26 (+ b.2 (+ c.3 (+ d.4 (+ e.5 (+  f.6 (+ g.7 (+ h.8
-//              (+ i.9 (+ j.10 (+ k.11 l.12)))))))))))))))
 
-//     ;; another stress test, which should fail unless low-degree
-//     ;; nodes are chosen properly
-//      (letrec ()
-//        (locals (b.2 g.7 c.3 d.4 e.5 a.1 f.6)
-//          (begin
-//            (set! a.1 1)
-//            (set! b.2 2)
-//            (set! c.3 a.1)
-//            (set! d.4 4)
-//            (set! e.5 5)
-//            (set! f.6 b.2)
-//            (set! f.6 (+ f.6 c.3))
-//            (set! f.6 (+ f.6 d.4))
-//            (set! f.6 (+ f.6 e.5))
-//            (set! g.7 7)
-//            (+ f.6 g.7))))
- 
-//    ;; another variant of latter 
-//     (letrec ()
-//       (locals (b.2 g.7 c.3 d.4 e.5 a.1 f.6 h.8 i.9 j.10 k.11)
-//         (begin
-//           (set! h.8 77)
-//           (set! i.9 88)
-//           (set! j.10 99)
-//           (set! k.11 111)
-//           (set! a.1 1)
-//           (set! b.2 2)
-//           (set! c.3 a.1)
-//           (set! d.4 4)
-//           (set! e.5 5)
-//           (set! f.6 b.2)
-//           (set! f.6 (+ f.6 c.3))
-//           (set! f.6 (+ f.6 d.4))
-//           (set! f.6 (+ f.6 e.5))
-//           (set! g.7 7)
-//           (set! f.6 (+ f.6 g.7))
-//           (set! f.6 (+ f.6 i.9))
-//           (set! f.6 (+ f.6 j.10))
-//           (set! f.6 (+ f.6 k.11))
-//           (+ f.6 h.8)))) 
+// I have not valiate its value, just ensure it output something SEEMS correct.
+#[test]
+fn compile38() {
+    let s = "
+    (letrec ([f$1 (lambda (n.2 a.3 b.4 c.5 x.6)
+                    (locals ()
+                      (if (= n.2 0)
+                          (+ (* a.3 (* x.6 x.6)) (+ (* b.4 x.6) c.5))
+                          (+ (f$1 (sra n.2 3)
+                                  (+ a.3 (logand n.2 4))
+                                  (+ b.4 (logand n.2 2))
+                                  (+ c.5 (logand n.2 1))
+                                  x.6)
+                             1))))])
+      (locals () (f$1 16434824 1 0 -1 7)))";
+    test_helper(s, "c38.s", "900\n");
+}
 
-//     ;; The following makes a.1 of high degree and since no variable
-//     ;; can be spilled causes an error in the register allocator
-//     (letrec ()
-//       (locals (a.1 b.2 c.3 d.4 e.5 f.6 g.7 h.8 i.9 j.10 k.11 l.12 m.13 n.14 
-//                o.15 p.16 q.17 r.18 s.19 t.20 u.21 v.22 w.23 x.24 y.25 z.26)
-//         (begin
-//           (set! a.1 1)
-//           (set! b.2 2)
-//           (set! c.3 3)
-//           (set! d.4 4)
-//           (set! e.5 5)
-//           (set! f.6 6)
-//           (set! g.7 7)
-//           (set! h.8 8)
-//           (set! i.9 9)
-//           (set! j.10 10)
-//           (set! k.11 11)
-//           (set! l.12 12)
-//           (set! m.13 13)
-//           (set! n.14 14)
-//           (set! o.15 15)
-//           (set! p.16 16)
-//           (set! q.17 17)
-//           (set! r.18 18)
-//           (set! s.19 19)
-//           (set! t.20 20)
-//           (set! u.21 21)
-//           (set! v.22 22)
-//           (set! w.23 23)
-//           (set! x.24 24)
-//           (set! y.25 25)
-//           (set! z.26 26)
-//           (set! a.1 (+ a.1 (+ b.2 (+ c.3 (+ d.4 (+ e.5 (+ f.6 (+ g.7 (+ h.8
-//                     (+ i.9 (+ j.10 (+ k.11 (+ l.12 (+ m.13 (+ n.14 (+ o.15 
-//                     (+ p.16 (+ q.17 (+ r.18 (+ s.19 (+ t.20 (+ u.21 (+ v.22 
-//                     (+ w.23 (+ x.24 (+ y.25 z.26))))))))))))))))))))))))))
-//           (set! b.2 27)
-//           (set! c.3 28)
-//           (set! d.4 29)
-//           (set! e.5 30)
-//           (set! f.6 31)
-//           (set! g.7 32)
-//           (set! h.8 33)
-//           (set! i.9 34)
-//           (set! j.10 35)
-//           (set! k.11 36)
-//           (set! l.12 37)
-//           (set! m.13 38)
-//           (set! n.14 39)
-//           (set! o.15 40)
-//           (set! a.1 (+ a.1 (+ b.2 (+ c.3 (+ d.4 (+ e.5 (+ f.6 (+ g.7 (+ h.8
-//                     (+ i.9 (+ j.10 (+ k.11 (+ l.12 (+ m.13 
-//                     (+ n.14 o.15)))))))))))))))
-//           a.1)))
-//     ))
-                         
+// I have not valiate its value, just ensure it output something SEEMS correct.
+#[test]
+fn compile39() {
+    let s = "
+    (letrec ([f$1 (lambda (n.2 a.3 b.4 c.5 x.6)
+                    (locals ()
+                      (if (= n.2 0)
+                          (+ (* a.3 (* x.6 x.6)) (+ (* b.4 x.6) c.5))
+                          (- (f$1 (sra n.2 3)
+                                  (+ a.3 (logand n.2 4))
+                                  (+ b.4 (logand n.2 2))
+                                  (+ c.5 (logand n.2 1))
+                                  x.6)
+                             (g$0 n.2 a.3 b.4 c.5)))))]
+             [g$0 (lambda (n.7 a.8 b.9 c.10)
+                    (locals () (+ (- n.7 a.8) (- b.9 c.10))))])
+      (locals () (f$1 16434824 1 0 -1 7)))";
+    test_helper(s, "c39.s", "-18781744\n");
+}
+
+#[test]
+fn compile40() {
+    let s = "
+    (letrec ([square$0 (lambda (n.1) (locals () (* n.1 n.1)))])
+      (locals () (square$0 10)))";
+    test_helper(s, "c40.s", "100\n");
+}
+
+#[test]
+fn compile41() {
+    let s = "
+     (letrec ([gcd$0 (lambda (x.1 y.2)
+                       (locals ()
+                        (if (= y.2 0) 
+                            x.1 
+                            (gcd$0 (if (> x.1 y.2) (- x.1 y.2) x.1)
+                                   (if (> x.1 y.2) y.2 (- y.2 x.1))))))])
+      (locals () (gcd$0 1071 1029)))";
+    test_helper(s, "c41.s", "21\n");
+}
+
+#[test]
+fn compile42() {
+    let s = "
+     (letrec ([ack$0 (lambda (m.1 n.2)
+                      (locals (tmp.3)
+                        (if (= m.1 0)
+                            (+ n.2 1)
+                            (if (if (> m.1 0) (= n.2 0) (false))
+                                (ack$0 (- m.1 1) 1)
+                                (begin
+                                  (set! tmp.3 (ack$0 m.1 (- n.2 1)))
+                                  (ack$0 (- m.1 1) tmp.3))))))])
+      (locals () (ack$0 2 4))) ";
+    test_helper(s, "c42.s", "11\n");
+}
+
+#[test]
+fn compile43() {
+    let s = "
+    (letrec ([ack$0 (lambda (m.1 n.2)
+                      (locals ()
+                        (if (= m.1 0)
+                            (+ n.2 1)
+                            (if (if (> m.1 0) (= n.2 0) (false))
+                                (ack$0 (- m.1 1) 1)
+                                (ack$0 (- m.1 1) (ack$0 m.1 (- n.2 1)))))))])
+      (locals () (ack$0 2 4))) ";
+    test_helper(s, "c43.s", "11\n");
+}
+
+#[test]
+fn compile44() {
+    let s = "
+    (letrec ([fib$0 (lambda (n.1) (locals () (fib$1 n.1 0 1)))]
+             [fib$1 (lambda (n.1 a.2 b.3)
+                      (locals ()
+                        (if (= n.1 0)
+                            a.2
+                            (fib$1 (- n.1 1) b.3 (+ b.3 a.2)))))])
+      (locals () (fib$0 5)))";
+    test_helper(s, "c44.s", "5\n");
+
+}
+
+#[test]
+fn compile45() {
+    let s = "
+    (letrec ([if-test$2 (lambda ()
+                           (locals (x.5)
+                             (begin
+                               (set! x.5 (if (begin
+                                               (set! x.5 7)
+                                               (if (< x.5 1)
+                                                   (false)
+                                                   (< x.5 10)))
+                                           (* x.5 2)
+                                           (+ x.5 5)))
+                               x.5)))])
+       (locals () (if-test$2)))";
+    test_helper(s, "c45.s", "14\n");
+}
+
+fn compile46() {
+    let s = "
+    (letrec ([if-test$3 (lambda (n.1)
+                           (locals ()
+                             (begin
+                               (if (if (= n.1 0)
+                                       (true)
+                                       (if (= n.1 1) (true) (= n.1 2)))
+                                   (* n.1 5)
+                                   (- n.1 5)))))])
+       (locals () (if-test$3 2)))";
+    test_helper(s, "c47.s", "10\n");
+}
+
+#[test]
+fn compile48() {
+    let s = "
+    (letrec ([if-test$4 (lambda (x.5)
+                           (locals ()
+                             (begin
+                               (* (if (if (= x.5 10) (false) (true))
+                                      (+ x.5 10)
+                                      (- x.5 2))
+                                  10))))])
+      (locals () (if-test$4 2)))";
+    test_helper(s, "c48.s", "120\n");
+}
+
+#[test]
+fn compile49() {
+    let s = "
+    (letrec ([if-test$5 (lambda (n.1 x.2 y.3)
+                           (locals ()
+                             (begin
+                               (if (= n.1 0)
+                                   (set! x.2 (+ x.2 y.3))
+                                   (set! y.3 (+ y.3 x.2)))
+                               (set! x.2 (+ x.2 n.1))
+                               (if (if (= n.1 y.3) (false) (true))
+                                   (+ n.1 x.2)
+                                   (+ n.1 y.3)))))])
+       (locals () (begin (if-test$5 1 1 1))))";
+    test_helper(s, "c49.s", "3\n");
+}
+
+#[test]
+fn compile50() {
+    let s = "
+    (letrec ([if-test$6 (lambda (n.1)
+                           (locals (x.2 y.3)
+                             (begin
+                               (set! x.2 1)
+                               (begin
+                                 (set! y.3 1)
+                                 (if (= n.1 0)
+                                     (set! x.2 (+ x.2 y.3))
+                                     (set! y.3 (+ y.3 x.2)))
+                                 (set! x.2 (+ x.2 n.1)))
+                               (if (if (= n.1 y.3) (false) (true))
+                                   (set! n.1 (+ n.1 x.2))
+                                   (set! n.1 (+ n.1 y.3)))
+                               (+ x.2 n.1))))])
+       (locals ()(if-test$6 1)))";
+    test_helper(s, "c50.s", "5\n");
+}
+
+#[test]
+fn compile51() {
+    let s = "
+    (letrec ()
+       (locals (x.1 y.2 z.3)
+         (begin
+           (set! x.1 0)
+           (set! y.2 1)
+           (if (if (= x.1 0) (= y.2 1) (false))
+               (set! z.3 5)
+               (begin (set! z.3 5) (set! z.3 (+ z.3 z.3))))
+           z.3)))";
+    test_helper(s, "c51.s", "5\n");
+}
+
+#[test]
+fn compile52() {
+    let s = "
+    (letrec ()
+       (locals (a.1 b.2 c.3)
+         (begin
+           (set! a.1 0)
+           (set! b.2 0)
+           (if (if (= a.1 0) (= b.2 1) (false))
+               (set! c.3 5)
+               (begin (set! c.3 5) (set! c.3 (+ c.3 c.3))))
+           c.3)))";
+    test_helper(s, "c52.s", "10\n");
+}
+
+#[test]
+fn compile53() {
+    let s = "
+    (letrec ([main$0 (lambda (x.1 y.2)
+                       (locals (z.3)
+                         (begin
+                           (if (if (= x.1 1) (true) (= y.2 1))
+                               (set! z.3 1)
+                               (set! z.3 0))
+                           (* z.3 5))))])
+      (locals () (main$0 1 0)))";
+    test_helper(s, "c53.s", "5\n");
+}
+
+#[test]
+fn compile54() {
+    let s = "
+    (letrec ([main$0 (lambda (a.1 b.2)
+                       (locals (c.3)
+                         (begin
+                           (set! c.3 
+                             (if (if (= a.1 1) (true) (= b.2 1))
+                                 1
+                                 0))
+                           (+ c.3 5))))])
+      (locals () (main$0 0 1)))";
+    test_helper(s, "c54.s", "6\n");
+}
+
+#[test]
+fn compile55() {
+    let s = "
+    (letrec ([main$0 (lambda (a.1 b.2)
+                       (locals ()
+                         (begin
+                           (if (if (= a.1 1) (= b.2 1) (true))
+                               (set! a.1 1)
+                               (set! b.2 0))
+                           (set! b.2 (* b.2 10))
+                           (set! a.1 (+ a.1 b.2))
+                           a.1)))])
+       (locals () (main$0 0 1)))";
+    test_helper(s, "c55.s", "11\n");
+}
+
+#[test]
+fn compile56() {
+    let s = "
+    (letrec ([main$0 (lambda (a.1 b.2)
+                       (locals ()
+                         (if (if (= a.1 1) (= b.2 1) (true)) 1 0)))])
+      (locals () (main$0 1 0)))";
+    test_helper(s, "c56.s", "0\n");
+}
+
+#[test]
+fn compile57() {
+    let s = "
+    (letrec ([main$0 (lambda (a.1 b.2)
+                       (locals ()
+                         (if (if (= a.1 1) (= b.2 1) (true)) 1 0)))])
+      (locals () (main$0 0 0)))";
+    test_helper(s, "c57.s", "1\n");
+}
+
+#[test]
+fn compile58() {
+    let s = "
+    (letrec ()
+       (locals (a.1 b.2)
+         (begin
+           (set! a.1 1)
+           (set! b.2 1)
+           (if (if (= a.1 1) (= b.2 1) (true)) 1 0))))";
+    test_helper(s, "c58.s", "1\n");
+}
+
+#[test]
+fn compile59() {
+    let s = "
+    (letrec ()
+      (locals (n.1 a.2 b.3 c.4)
+        (begin
+          (set! n.1 1)
+          (begin
+            (set! a.2 2)
+            (begin
+              (set! b.3 3)
+              (set! n.1 (+ n.1 (if (= (+ n.1 b.3) b.3) 5 10)))
+              (set! n.1 (+ n.1 b.3)))
+            (set! n.1 (+ n.1 a.2)))
+          (+ n.1 n.1))))";
+    test_helper(s, "c59.s", "32\n");
+}
+
+#[test]
+fn compile60() {
+    let s = "
+    (letrec ()
+       (locals (a.1 b.2 c.3 d.4 e.5)
+         (begin
+           (set! a.1 1)
+           (set! b.2 2)
+           (set! c.3 3)
+           (set! d.4 4)
+           (set! e.5 5)
+           (+ (+ (+ (+ e.5 d.4) c.3) b.2) a.1))))";
+    test_helper(s, "c60.s", "15\n");
+}
+#[test]
+fn compile61() {
+    let s = "
+    (letrec ()
+       (locals (a.1 b.2 c.3 d.4 e.5 f.6)
+         (begin
+           (set! a.1 1)
+           (set! b.2 2)
+           (set! c.3 3)
+           (set! d.4 4)
+           (set! e.5 5)
+           (set! f.6 6)
+           (set! a.1 
+             (if (> (+ a.1 d.4) f.6)
+               (* a.1 (+ c.3 f.6))
+               (* a.1 (+ b.2 e.5))
+               ))
+           a.1)))";
+    test_helper(s, "c61.s", "7\n");
+}
+
+#[test]
+fn compile62() {
+    let s = "
+    (letrec ([dot$0 (lambda (a.1 a.2 a.3 a.4 b.5 b.6 b.7 b.8)
+                      (locals ()
+                        (+ (* a.1 b.5) 
+                           (+ (* a.2 b.6) 
+                              (+ (* a.3 b.7) (* a.4 b.8))))))])
+      (locals () (dot$0 2 4 6 8 1 3 5 7)))";
+    test_helper(s, "c62.s", "100\n")
+}
+
+#[test]
+fn compile63() {
+    let s = "
+    (letrec ([dot-double-first$1 (lambda (a.1 a.2 a.3 a.4 b.5 b.6 b.7 b.8)
+                                   (locals ()
+                                     (dot$0 (+ a.1 a.1) (+ a.2 a.2)
+                                            (+ a.3 a.3) (+ a.4 a.4)
+                                            b.5 b.6 b.7 b.8)))]
+             [dot$0 (lambda (a.1 a.2 a.3 a.4 b.5 b.6 b.7 b.8)
+                      (locals ()
+                        (+ (* a.1 b.5) 
+                           (+ (* a.2 b.6) 
+                              (+ (* a.3 b.7) (* a.4 b.8))))))])
+      (locals () (dot-double-first$1 2 4 6 8 1 3 5 7)))";
+    test_helper(s, "c63.s", "200\n");
+}
+
+#[test]
+fn compile64() {
+    let s = "
+    (letrec ([dot-double-first$1 (lambda (a.1 a.2 a.3 a.4 b.5 b.6 b.7 b.8)
+                                   (locals ()
+                                     (begin
+                                       (set! a.1 (+ a.1 a.1))
+                                       (set! a.2 (+ a.2 a.2))
+                                       (set! a.3 (+ a.3 a.3))
+                                       (set! a.4 (+ a.4 a.4))
+                                       (dot$0 a.1 a.2 a.3 a.4
+                                              b.5 b.6 b.7 b.8))))]
+             [dot$0 (lambda (a.1 a.2 a.3 a.4 b.5 b.6 b.7 b.8)
+                      (locals ()
+                        (+ (* a.1 b.5) 
+                           (+ (* a.2 b.6) 
+                              (+ (* a.3 b.7) (* a.4 b.8))))))])
+      (locals () (dot-double-first$1 2 4 6 8 1 3 5 7)))";
+    test_helper(s, "c64.s", "200\n");
+}
+
+#[test]
+fn compile65() {
+    let s = "
+    (letrec ()
+      (locals (b.2 g.7 c.3 d.4 e.5 a.1 f.6 h.8 i.9 j.10 k.11)
+        (begin
+          (set! h.8 77)
+          (set! i.9 88)
+          (set! j.10 99)
+          (set! k.11 111)
+          (set! a.1 1)
+          (set! b.2 2)
+          (set! c.3 a.1)
+          (set! d.4 4)
+          (set! e.5 5)
+          (set! f.6 b.2)
+          (set! f.6 (+ f.6 c.3))
+          (set! f.6 (+ f.6 d.4))
+          (set! f.6 (+ f.6 e.5))
+          (set! g.7 7)
+          (set! f.6 (+ f.6 g.7))
+          (set! f.6 (+ f.6 i.9))
+          (set! f.6 (+ f.6 j.10))
+          (set! f.6 (+ f.6 k.11))
+          (+ f.6 h.8))))";
+    test_helper(s, "c65.s", "394\n");
+}
