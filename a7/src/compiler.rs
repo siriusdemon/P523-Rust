@@ -1718,7 +1718,6 @@ impl UpdateFrameLocations {
                 for e in exprs {
                     if let Set (box Symbol (mut s1), box any) = e {
                         if is_fv(&s1) { s1 = self.update_location(&s1, offset); }
-
                         let rhs = match any { 
                             Symbol (s2) if is_fv(&s2) => Symbol ( self.update_location(&s2, offset) ),
                             other => other,

@@ -615,7 +615,6 @@ fn compile37() {
        (locals () (square$1 7)))";
     test_helper(s, "c37.s", "49\n");
 }
-//    ; test nontail calls w/several arguments
 
 
 // I have not valiate its value, just ensure it output something SEEMS correct.
