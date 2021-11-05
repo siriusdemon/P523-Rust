@@ -548,7 +548,7 @@ fn compile33() {
        (locals () (div$1 153 17)))";
     // Yes, I am very serious to fill the answoer here.
     // If you remove every locals and one pair of parentheses in the program above 
-    // and run it with chez scheme, it really output 2147483656.
+    // and run it with chez scheme, it really output 2147483656. Try with test33.scm
     // So I think it is the right answer for this test.
     test_helper(s, "c33.s", "2147483656\n");
 }
