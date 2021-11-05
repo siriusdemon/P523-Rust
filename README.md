@@ -10,12 +10,29 @@ The P523 PDF files spreaded around the Internet is the main materials you have t
 
 ### Adventure
 
-Adventure is 
+Adventure is exactly same as a1. You are expected to master every line of code here.
 
-main.rs             : 11
-parser.rs           : 183
+```rs
+main.rs             : 10
 syntax.rs           : 56
+parser.rs           : 181
+compiler.rs         : 113
 test.rs             : 132
 ----------------------------
-total               : 382
+total               : 492
+```
 
+
+Firstly, you should read the main.rs. It include other module, use a single interface `compile` to compile the promgram. The result is saved in "t.s".
+
+Then, read the syntax.rs. There are two enum there. One is Expr, another is Asm. Your goal is to transform the Expr code into Asm code. The trait `Display` impl for Expr is for debug purpose, for Asm is for generating asemble code.
+
+And then you are ready to read parser.rs. Or you can just skip it if you don't care. You can copy mine into your folder. The parser simply transforms the string-form program into an Expr.
+
+It is time to write your own Pass in compiler.rs. Since A1 is really simple, you are expected to understand the whole transformation. After that, you are really really ready for the P523 adventure.
+
+Tests, you can understand them absolutely.
+
+If you have any questions, please open a new issue at this repo.
+
+Have a Good Time!
