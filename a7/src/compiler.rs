@@ -91,7 +91,7 @@ fn get_rp(name: &str) -> String {
 
 fn get_rp_nontail(name: &str) -> String {
     let salt = gensym("");
-    format!("rpnt{}{}", name, salt)
+    format!("rpnt_{}_{}", name, salt)
 }
 
 fn flatten_begin(expr: Expr) -> Expr {
