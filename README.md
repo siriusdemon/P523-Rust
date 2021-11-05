@@ -8,4 +8,14 @@ You are expected to start from [adventure](./adventure), write your own code unt
 The P523 PDF files spreaded around the Internet is the main materials you have to read again and again. Asides, the reference codes serve as hints. 
 
 
+### Adventure
+
+Adventure is 
+
+main.rs             : 11
+parser.rs           : 183
+syntax.rs           : 56
+test.rs             : 132
+----------------------------
+total               : 382
 
