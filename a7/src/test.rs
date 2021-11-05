@@ -452,7 +452,7 @@ fn compile27() {
           (set! b.3 (g$1 x.1))
           (set! c.4 (h$5 (i$4 (j$3 (t$2 x.1)))))
           (* a.2 (* b.3 (+ c.4 0))))))";
-    test_helper(s, "c27.s", "479925\n");
+    test_helper(s, "c27.s", "486324\n");
 }
 
 #[test]

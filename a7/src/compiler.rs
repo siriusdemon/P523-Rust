@@ -62,12 +62,8 @@ fn is_label(sym: &str) -> bool {
     }
 }
 
-fn fv_to_index(fv: &str) -> usize {
+fn fv_to_index(fv: &str) -> i64 {
     fv[2..].parse().unwrap()
-}
-
-fn uvar_to_label(uvar: &str) -> String {
-    uvar.replace(".", "$") 
 }
 
 fn gensym(prefix: &str) -> String {
@@ -942,7 +938,7 @@ impl AssignNewFrame {
             if !is_fv(x) {
                 x = bindings.get(x).unwrap();
             }
-            let index = fv_to_index(x);
+            let index = fv_to_index(x) as usize;
             max_fv_index = max_fv_index.max(index);
         }
         return max_fv_index + 1;
@@ -1647,8 +1643,9 @@ impl UpdateFrameLocations {
                 let mut tail = exprs.pop().unwrap();
                 let mut new_exprs = vec![];
                 for mut e in exprs {
-                    let (e, offset) = self.effect_helper(e, offset);
-                    new_exprs.push(e);
+                    let res = self.effect_helper(e, offset);
+                    offset = res.1;
+                    new_exprs.push(res.0);
                 }
                 let (tail, offset) = self.tail_helper(tail, offset);
                 new_exprs.push(tail);
@@ -1671,8 +1668,9 @@ impl UpdateFrameLocations {
                 let mut pred = exprs.pop().unwrap();
                 let mut new_exprs = vec![];
                 for mut e in exprs {
-                    let (e, offset) = self.effect_helper(e, offset);
-                    new_exprs.push(e);
+                    let res  = self.effect_helper(e, offset);
+                    offset = res.1;
+                    new_exprs.push(res.0);
                 }
                 let (pred, offset) = self.pred_helper(pred, offset);
                 new_exprs.push(pred);
@@ -1694,8 +1692,9 @@ impl UpdateFrameLocations {
             Begin (mut exprs) => {
                 let mut new_exprs = vec![];
                 for mut e in exprs {
-                    let (e, offset) = self.effect_helper(e, offset);
-                    new_exprs.push(e);
+                    let res  = self.effect_helper(e, offset);
+                    offset = res.1;
+                    new_exprs.push(res.0);
                 }
                 return (Begin (new_exprs), offset);
             }
@@ -1716,22 +1715,30 @@ impl UpdateFrameLocations {
             ReturnPoint (labl, box Begin (mut exprs)) => {
                 let tail = exprs.pop().unwrap();
                 let mut new_exprs = vec![];
-                let mut exprs_iter = exprs.into_iter();
-                while let Some(Set (box Symbol (s), box any)) = exprs_iter.next() {
-                    let set_expr = if is_fv(&s) {
-                        let mut fidx = fv_to_index(&s); 
-                        fidx = fidx - (offset as usize >> ALIGN_SHIFT);
-                        set1 (Symbol (FRAME_VARS[fidx].to_string()), any)
-                    } else {
-                        set1 (Symbol (s), any)
-                    };
-                    new_exprs.push(set_expr);
+                for e in exprs {
+                    if let Set (box Symbol (mut s1), box any) = e {
+                        if is_fv(&s1) { s1 = self.update_location(&s1, offset); }
+
+                        let rhs = match any { 
+                            Symbol (s2) if is_fv(&s2) => Symbol ( self.update_location(&s2, offset) ),
+                            other => other,
+                        };
+                        let new_set = set1 (Symbol (s1), rhs);
+                        new_exprs.push(new_set);
+                    } 
                 }
+                let (tail, offset) = self.tail_helper(tail, offset);
                 new_exprs.push(tail);
                 return (ReturnPoint (labl, Box::new(Begin (new_exprs))), offset);
             }
             e => (e, offset),
         }
+    }
+
+    fn update_location(&self, fv: &str, offset: i64) -> String {
+        let mut fidx = fv_to_index(&fv); 
+        fidx = fidx - (offset  >> ALIGN_SHIFT);
+        return format!("fv{}", fidx);
     }
 }
 
@@ -2029,8 +2036,7 @@ impl CompileToAsm {
     }
 
     fn fv_to_deref(&self, fv :&str) -> Asm {
-        let v :Vec<&str> = fv.split("fv").collect();
-        let index :i64 = v[1].parse().unwrap();
+        let index :i64 = fv[2..].parse().unwrap();
         let fp = self.string_to_reg(FRAME_POINTER_REGISTER);
         return Deref (Box::new(fp), index << ALIGN_SHIFT);
     }
