@@ -132,6 +132,10 @@ fn if2(pred: Expr, b1: Expr, b2: Expr) -> Expr {
     If (Box::new(pred), Box::new(b1), Box::new(b2))
 }
 
+fn make_alloc(e: Expr) -> Expr {
+    set2(Symbol (ALLOCATION_REGISTER.to_string()),
+        "+".to_string(), Symbol (ALLOCATION_REGISTER.to_string()), e)
+}
 
 
 pub struct ParseExpr {}
@@ -588,6 +592,7 @@ impl ImposeCallingConvention {
                 let mut liveset = vec![
                     Symbol (FRAME_POINTER_REGISTER.to_string()),
                     Symbol (RETRUN_ADDRESS_REGISTER.to_string()),
+                    Symbol (ALLOCATION_REGISTER.to_string()),
                 ];
                 if args.len() > PARAMETER_REGISTERS.len() {
                     let fv_args = args.drain(PARAMETER_REGISTERS.len()..);
@@ -623,15 +628,32 @@ impl ImposeCallingConvention {
                 let args = vec![
                     Symbol (FRAME_POINTER_REGISTER.to_string()),
                     Symbol (RETURN_VALUE_REGISTER.to_string()),
+                    Symbol (ALLOCATION_REGISTER.to_string()),
                 ];
                 let jump = Funcall (get_rp(rp), args);
                 return Begin (vec![expr, jump]);
+            }
+            Alloc (box e) => {
+                let mut exprs = vec![
+                    set1(Symbol (RETURN_VALUE_REGISTER.to_string()), 
+                         Symbol (ALLOCATION_REGISTER.to_string())),
+                    make_alloc(e),
+                ];
+                let args = vec![
+                    Symbol (FRAME_POINTER_REGISTER.to_string()),
+                    Symbol (RETURN_VALUE_REGISTER.to_string()),
+                    Symbol (ALLOCATION_REGISTER.to_string()),
+                ];
+                let jump = Funcall (get_rp(rp), args);
+                exprs.push(jump);
+                return Begin (exprs);
             }
             atom => {
                 let expr = set1(Symbol (RETURN_VALUE_REGISTER.to_string()), atom);
                 let args = vec![
                     Symbol (FRAME_POINTER_REGISTER.to_string()),
                     Symbol (RETURN_VALUE_REGISTER.to_string()),
+                    Symbol (ALLOCATION_REGISTER.to_string()),
                 ];
                 let jump = Funcall (get_rp(rp), args);
                 return Begin (vec![expr, jump]);
@@ -703,7 +725,14 @@ impl ImposeCallingConvention {
                 exprs.push(self.effect_helper(Funcall (labl, args), new_frame));
                 exprs.push(set1(sym, Symbol (RETURN_VALUE_REGISTER.to_string())));
                 return Begin (exprs);
-            }
+            },
+            Set (box sym, box Alloc (box e)) => {
+                let mut exprs = vec![
+                    set1(sym, Symbol (ALLOCATION_REGISTER.to_string())),
+                    make_alloc(e),
+                ];
+                return Begin (exprs);
+            },
             e => e,
         }
     } 
@@ -2235,8 +2264,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("RemoveComplexOpera", &expr);
     let expr = FlattenSet{}.run(expr);
     compile_formatter("FlattenSet", &expr);
-    // let expr = ImposeCallingConvention{}.run(expr);
-    // compile_formatter("ImposeCallingConvention", &expr);
+    let expr = ImposeCallingConvention{}.run(expr);
+    compile_formatter("ImposeCallingConvention", &expr);
     // let expr = UncoverFrameConflict{}.run(expr);
     // compile_formatter("UncoverFrameConflict", &expr);
     // let expr = PreAssignFrame{}.run(expr);
