@@ -151,6 +151,9 @@ impl Parser {
             "begin" => self.parse_begin(),
             "set!" => self.parse_set(),
             "if" => self.parse_if(),
+            "alloc" => self.parse_alloc(),
+            "mset!" => self.parse_mset(),
+            "mref" => self.parse_mref(),
             "+" | "-" | "*" | "logor" | "logand" | "sra" |
             "=" | ">" | "<" | ">=" | "<="
                 => self.parse_prim2(),
@@ -276,6 +279,30 @@ impl Parser {
         let e2 = self.parse_expr();
         let _right = self.remove_top();
         Expr::Prim2(op.unwrap().token, Box::new(e1), Box::new(e2))
+    }
+
+    fn parse_alloc(&mut self) -> Expr {
+        let _alloc = self.remove_top();
+        let e = self.parse_expr();
+        let _right = self.remove_top();
+        Expr::Alloc(Box::new(e))
+    }
+
+    fn parse_mset(&mut self) -> Expr {
+        let _mset = self.remove_top();
+        let base = self.parse_expr();
+        let offset = self.parse_expr();
+        let value = self.parse_expr();
+        let _right = self.remove_top();
+        Expr::Mset(Box::new(base), Box::new(offset), Box::new(value))
+    }
+
+    fn parse_mref(&mut self) -> Expr {
+        let _mref = self.remove_top();
+        let base = self.parse_expr();
+        let offset = self.parse_expr();
+        let _right = self.remove_top();
+        Expr::Mref(Box::new(base), Box::new(offset))
     }
 
     fn parse_symbol(&mut self) -> Expr {

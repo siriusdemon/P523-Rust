@@ -203,6 +203,23 @@ impl RemoveComplexOpera {
                 exprs.push(tail);
                 return Begin (exprs);
             }
+            Alloc (box e) => {
+                let mut exprs = vec![];
+                let triv = self.reduce_value(e, locals, &mut exprs);
+                let alloc = Alloc (Box::new(triv));
+                if exprs.len() == 0 { return alloc; }
+                exprs.push(alloc);
+                return Begin (exprs);
+            }
+            Mref (box base, box offset) => {
+                let mut exprs = vec![];
+                let base_ = self.reduce_value(base, locals, &mut exprs);
+                let offset_ = self.reduce_value(offset, locals, &mut exprs);
+                let mref = Mref (Box::new(base_), Box::new(offset_));
+                if exprs.len() == 0 { return mref; }
+                exprs.push(mref);
+                return Begin (exprs);
+            }
             e => e,
         }         
     }    
@@ -252,6 +269,33 @@ impl RemoveComplexOpera {
                 let new_set = set1(sym, Funcall (labl, args));
                 if exprs.len() == 0 { return new_set; }
                 exprs.push(new_set);
+                return Begin (exprs);
+            }
+            Set (box sym, box Alloc (box e)) => {
+                let mut exprs = vec![];
+                let e = self.reduce_value(e, locals, &mut exprs);
+                let new_set = set1(sym, Alloc (Box::new(e)));
+                if exprs.len() == 0 { return new_set; }
+                exprs.push(new_set);
+                return Begin (exprs);
+            }
+            Set (box sym, box Mref (box base, box offset)) => {
+                let mut exprs = vec![];
+                let base_ = self.reduce_value(base, locals, &mut exprs);
+                let offset_ = self.reduce_value(offset, locals, &mut exprs);
+                let new_set = set1(sym, Mref (Box::new(base_), Box::new(offset_)));
+                if exprs.len() == 0 { return new_set; }
+                exprs.push(new_set);
+                return Begin (exprs);
+            }
+            Mset (box base, box offset, box value) => {
+                let mut exprs = vec![];
+                let base_ = self.reduce_value(base, locals, &mut exprs);
+                let offset_ = self.reduce_value(offset, locals, &mut exprs);
+                let value_ = self.reduce_value(value, locals, &mut exprs);
+                let mset = Mset (Box::new(base_), Box::new(offset_), Box::new(value_));
+                if exprs.len() == 0 { return mset; }
+                exprs.push(mset);
                 return Begin (exprs);
             }
             Set (box sym, box value) => {
@@ -340,6 +384,23 @@ impl RemoveComplexOpera {
                 let funcall = Funcall (labl, args);
                 let new_uvar = gen_uvar();
                 let assign = set1(Symbol (new_uvar.clone()), funcall);
+                prelude.push(assign);
+                locals.insert(new_uvar.clone());
+                return Symbol (new_uvar);
+            }
+            Alloc (box e) => {
+                let new_e = self.reduce_value(e, locals, prelude);
+                let new_uvar = gen_uvar();
+                let assign = set1(Symbol (new_uvar.clone()), new_e);
+                prelude.push(assign);
+                locals.insert(new_uvar.clone());
+                return Symbol (new_uvar)
+            }
+            Mref (box base, box offset) => {
+                let new_base = self.reduce_value(base, locals, prelude);
+                let new_offset = self.reduce_value(offset, locals, prelude);
+                let new_uvar = gen_uvar();
+                let assign = set1(Symbol (new_uvar.clone()), Mref (Box::new(new_base), Box::new(new_offset)));
                 prelude.push(assign);
                 locals.insert(new_uvar.clone());
                 return Symbol (new_uvar);
@@ -2174,48 +2235,49 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("RemoveComplexOpera", &expr);
     let expr = FlattenSet{}.run(expr);
     compile_formatter("FlattenSet", &expr);
-    let expr = ImposeCallingConvention{}.run(expr);
-    compile_formatter("ImposeCallingConvention", &expr);
-    let expr = UncoverFrameConflict{}.run(expr);
-    compile_formatter("UncoverFrameConflict", &expr);
-    let expr = PreAssignFrame{}.run(expr);
-    compile_formatter("PreAssignFrame", &expr);
-    let mut expr = AssignNewFrame{}.run(expr);
-    compile_formatter("AssignNewFrame", &expr);
-    let mut loop_id = 1;
-    loop {
-        println!("The {}-th iteration", loop_id);
-        loop_id += 1;
+    // let expr = ImposeCallingConvention{}.run(expr);
+    // compile_formatter("ImposeCallingConvention", &expr);
+    // let expr = UncoverFrameConflict{}.run(expr);
+    // compile_formatter("UncoverFrameConflict", &expr);
+    // let expr = PreAssignFrame{}.run(expr);
+    // compile_formatter("PreAssignFrame", &expr);
+    // let mut expr = AssignNewFrame{}.run(expr);
+    // compile_formatter("AssignNewFrame", &expr);
+    // let mut loop_id = 1;
+    // loop {
+    //     println!("The {}-th iteration", loop_id);
+    //     loop_id += 1;
 
-        expr = FinalizeFrameLocations{}.run(expr);
-        compile_formatter("FinalizeFrameLocations", &expr);
-        expr = SelectInstructions{}.run(expr);
-        compile_formatter("SelectInstructions", &expr);
-        expr = UncoverRegisterConflict{}.run(expr);
-        compile_formatter("UncoverRegisterConflict", &expr);
-        expr = AssignRegister{}.run(expr);
-        compile_formatter("AssignRegister", &expr);
+    //     expr = FinalizeFrameLocations{}.run(expr);
+    //     compile_formatter("FinalizeFrameLocations", &expr);
+    //     expr = SelectInstructions{}.run(expr);
+    //     compile_formatter("SelectInstructions", &expr);
+    //     expr = UncoverRegisterConflict{}.run(expr);
+    //     compile_formatter("UncoverRegisterConflict", &expr);
+    //     expr = AssignRegister{}.run(expr);
+    //     compile_formatter("AssignRegister", &expr);
 
-        if everybody_home(&expr) {
-            break;
-        }
+    //     if everybody_home(&expr) {
+    //         break;
+    //     }
 
-        expr = AssignFrame{}.run(expr);
-        compile_formatter("AssignFrame", &expr);
-    }
-    let expr = DiscardCallLive{}.run(expr);
-    compile_formatter("DiscardCallLive", &expr);
-    let expr = FinalizeLocations{}.run(expr);
-    compile_formatter("Finalizelocations", &expr);
-    let expr = UpdateFrameLocations{}.run(expr);
-    compile_formatter("UpdateFrameLocations", &expr);
-    let expr = ExposeBasicBlocks{}.run(expr);
-    compile_formatter("ExposeBasicBlocks", &expr);
-    let expr = OptimizeJump{}.run(expr);
-    compile_formatter("OptimizeJump", &expr);
-    let expr = FlattenProgram{}.run(expr);
-    compile_formatter("FlattenProgram", &expr);
-    let expr = CompileToAsm{}.run(expr);
-    compile_formatter("CompileToAsm", &expr);
-    return GenerateAsm{}.run(expr, filename)
+    //     expr = AssignFrame{}.run(expr);
+    //     compile_formatter("AssignFrame", &expr);
+    // }
+    // let expr = DiscardCallLive{}.run(expr);
+    // compile_formatter("DiscardCallLive", &expr);
+    // let expr = FinalizeLocations{}.run(expr);
+    // compile_formatter("Finalizelocations", &expr);
+    // let expr = UpdateFrameLocations{}.run(expr);
+    // compile_formatter("UpdateFrameLocations", &expr);
+    // let expr = ExposeBasicBlocks{}.run(expr);
+    // compile_formatter("ExposeBasicBlocks", &expr);
+    // let expr = OptimizeJump{}.run(expr);
+    // compile_formatter("OptimizeJump", &expr);
+    // let expr = FlattenProgram{}.run(expr);
+    // compile_formatter("FlattenProgram", &expr);
+    // let expr = CompileToAsm{}.run(expr);
+    // compile_formatter("CompileToAsm", &expr);
+    // return GenerateAsm{}.run(expr, filename)
+    Ok(())
 }

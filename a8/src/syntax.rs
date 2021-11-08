@@ -45,6 +45,9 @@ pub enum Expr {
     If(Box<Expr>, Box<Expr>, Box<Expr>),
     If1(Box<Expr>, Box<Expr>),
     Set(Box<Expr>, Box<Expr>),
+    Alloc(Box<Expr>),
+    Mref(Box<Expr>, Box<Expr>),
+    Mset(Box<Expr>, Box<Expr>, Box<Expr>),
     Symbol(String),
     Funcall(String, Vec<Expr>),
     Int64(i64),
@@ -127,6 +130,9 @@ impl fmt::Display for Expr {
             Prim2 (op, box e1, box e2) => write!(f, "({} {} {})", op, e1, e2),
             If (box cond, box b1, box b2) => write!(f, "(if {} {} {})", cond, b1, b2),
             If1 (box cond, box b) => write!(f, "(if {} {})", cond, b),
+            Alloc (box e) => write!(f, "(alloc {})", e),
+            Mref (box base, box offset) => write!(f, "(mref {} {})", base, offset),
+            Mset (box base, box offset, box value) => write!(f, "(mset! {} {} {})", base, offset, value),
             Symbol (s) => write!(f, "{}", s),
             Funcall (name, args) => {
                 let seqs: Vec<String> = args.iter().map(|e| format!("{}", e)).collect();
