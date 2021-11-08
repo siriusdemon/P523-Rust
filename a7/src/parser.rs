@@ -79,7 +79,8 @@ impl Scanner {
     fn scan_sym(&self, i: usize, line: &mut usize, col: &mut usize, tokens: &mut Vec<Token>) -> usize {
         let mut sym = String::new();
         let mut j = i;
-        while j < self.expr.len() && ! is_delimiter(self.expr[j]) && self.expr[j] != ' ' && self.expr[j] != '\n' {
+        while j < self.expr.len() && ! is_delimiter(self.expr[j]) && self.expr[j] != ';'
+                                  && self.expr[j] != ' ' && self.expr[j] != '\n' {
             sym.push(self.expr[j]);
             j = j + 1;
         }
