@@ -29,7 +29,7 @@ Then, read the syntax.rs. There are two enums there. One is Expr, another is Asm
 
 And then you are ready to read parser.rs. Or you can just skip it if you don't care. You can copy mine into your folder. The parser simply transforms the string-form program into an abstract-syntax-tree Expr.
 
-There are two classes defined in parser.rs, Scanner and Parser. Scanner travers through the string-form program and tokenize it. A token consist of four parts: the string, the global index, line and row. The Scanner skips comment and newline. Parser parse the token stream using recursive-descent.
+There are two classes defined in parser.rs, Scanner and Parser. Scanner travers through the string-form program and tokenizes it. A token consists of four parts: the string, the global index, line and column. The Scanner skips comment and newline. Parser parse the token stream using recursive-descent.
 
 It is time to write your own Pass in compiler.rs. Since A1 is really simple, you are expected to understand the whole transformation. After that, you are really really ready for the P523 adventure.
 
