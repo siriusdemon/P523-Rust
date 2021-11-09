@@ -839,6 +839,17 @@ pub trait UncoverConflict {
                 }}
                 return liveset;
             }
+            Set (box Symbol(s), box Mref (box base, box offset)) => {
+                liveset.remove(s);
+                self.record_conflicts(s, "", &liveset, conflict_graph);
+                if let Symbol(s) = base { if is_uvar(s) || self.type_verify(s) {
+                    liveset.insert(s.to_string());
+                }}
+                if let Symbol(s) = offset { if is_uvar(s) || self.type_verify(s) {
+                    liveset.insert(s.to_string());
+                }}
+                return liveset;
+            }
             Set (box Symbol(s1), box Symbol(s2)) => {
                 liveset.remove(s1);
                 self.record_conflicts(s1, s2, &liveset, conflict_graph);
@@ -850,6 +861,14 @@ pub trait UncoverConflict {
             Set (box Symbol(s), box v2) => {
                 liveset.remove(s);
                 self.record_conflicts(s, "", &liveset, conflict_graph);
+                return liveset;
+            }
+            Mset (box base, box offset, box value) => {
+                for x in [base, offset, value] {
+                    if let Symbol(s) = x { if is_uvar(s) || self.type_verify(s) {
+                        liveset.insert(s.to_string());
+                    }}
+                }
                 return liveset;
             }
             ReturnPoint (labl, box tail) => {
@@ -1216,6 +1235,18 @@ impl SelectInstructions {
             Set (box Symbol (a), box Symbol (b)) => {
                 return self.set1_fv_rewrite(a, b, unspills);
             }
+            Set (box Symbol (a), box Mref (box Int64 (base), box Int64 (offset))) => {
+                return self.mref_int_rewrite(a, Int64 (base), Int64 (offset));
+            }
+            Set (box Symbol (a), box Mref (box base, box offset)) => {
+                return self.mref_fv_rewrite(a, base, offset, unspills);
+            }
+            Mset (box Int64 (base), box Int64 (offset), box value) => {
+                return self.mset_int_rewrite(Int64 (base), Int64 (offset), value, unspills);
+            }
+            Mset (box base, box offset, box value) => {
+                return self.mset_fv_rewrite(base, offset, value, unspills);
+            }
             If (box pred, box b1, box b2) => {
                 let new_pred = self.select_instruction_pred(unspills, pred);
                 let new_b1 = self.select_instruction_effect(unspills, b1);
@@ -1281,6 +1312,75 @@ impl SelectInstructions {
         return Begin (vec![expr1, expr2]);
     }
     
+    fn replace_fv(&self, expr: Expr, unspills: &mut HashSet<String>, prelude: &mut Vec<Expr>) -> Expr {
+        if let Symbol (s) = expr { 
+            if is_fv(&s) {
+                let new_uvar = gen_uvar();
+                unspills.insert(new_uvar.clone());  
+                prelude.push(set1(Symbol (new_uvar.clone()), Symbol (s)));
+                return Symbol (new_uvar);
+            } else { return Symbol (s); } 
+        }
+        return expr;
+    }
+    
+    fn mref_int_rewrite(&self, a: String, base: Expr, offset: Expr) -> Expr {
+        let exprs = vec![
+            set1(Symbol (a.clone()), base),
+            set1(Symbol (a.clone()), Mref (Box::new(Symbol (a)), Box::new(offset))),
+        ];
+        return Begin (exprs);
+    }
+
+    fn mref_fv_rewrite(&self, a: String, base: Expr, offset: Expr, unspills: &mut HashSet<String>) -> Expr {
+        // so, base and offset should not be fv.
+        let mut exprs = vec![];
+        let new_base = if let Symbol (b) = base { 
+            if is_fv(&b) {
+                exprs.push(set1(Symbol (a.clone()), Symbol (b)));
+                Symbol (a.clone())
+            } else { Symbol (b) }
+        } else { base };
+        let new_offset = if let Symbol (o) = offset { 
+            if is_fv(&o) {
+                // if base has no use a, then offset can use a.
+                let new_uvar = if exprs.len() > 0 { 
+                    let new_uvar = gen_uvar();
+                    unspills.insert(new_uvar.clone());  
+                    new_uvar
+                } else { a.clone() };
+                exprs.push(set1(Symbol (new_uvar.clone()), Symbol (o)));
+                Symbol (new_uvar)
+            } else { Symbol (o) }
+        } else { offset };
+        let new_mref = set1(Symbol (a), Mref (Box::new(new_base), Box::new(new_offset)));
+        if exprs.len() == 0 { return new_mref; }
+        exprs.push(new_mref);
+        return Begin (exprs);
+    }
+
+    fn mset_int_rewrite(&self, base: Expr, offset: Expr, value: Expr, unspills: &mut HashSet<String>) -> Expr {
+        let mut exprs = vec![];
+        let new_uvar = gen_uvar();
+        unspills.insert(new_uvar.clone());  
+        exprs.push(set1(Symbol (new_uvar.clone()), base)); 
+        let new_value = self.replace_fv(value, unspills, &mut exprs);
+        let new_mset = Mset (Box::new(Symbol (new_uvar)), Box::new(offset), Box::new(new_value));
+        exprs.push(new_mset); 
+        return Begin (exprs);
+    }
+
+    fn mset_fv_rewrite(&self, base: Expr, offset: Expr, value: Expr, unspills: &mut HashSet<String>) -> Expr {
+        let mut exprs = vec![];
+        let new_base = self.replace_fv(base, unspills, &mut exprs);
+        let new_offset = self.replace_fv(offset, unspills, &mut exprs);
+        let new_value = self.replace_fv(value, unspills, &mut exprs);
+        let new_mset = Mset (Box::new(new_base), Box::new(new_offset), Box::new(new_value));
+        if exprs.len() == 0 { return new_mset; }
+        exprs.push(new_mset);
+        return Begin (exprs);
+    }
+
     fn rewrite(&self, a: String, op: String, b: Expr, c: Expr, unspills: &mut HashSet<String>) -> Expr {
         let new_uvar = gen_uvar();
         unspills.insert(new_uvar.clone());
@@ -2266,21 +2366,21 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("FlattenSet", &expr);
     let expr = ImposeCallingConvention{}.run(expr);
     compile_formatter("ImposeCallingConvention", &expr);
-    // let expr = UncoverFrameConflict{}.run(expr);
-    // compile_formatter("UncoverFrameConflict", &expr);
-    // let expr = PreAssignFrame{}.run(expr);
-    // compile_formatter("PreAssignFrame", &expr);
-    // let mut expr = AssignNewFrame{}.run(expr);
-    // compile_formatter("AssignNewFrame", &expr);
+    let expr = UncoverFrameConflict{}.run(expr);
+    compile_formatter("UncoverFrameConflict", &expr);
+    let expr = PreAssignFrame{}.run(expr);
+    compile_formatter("PreAssignFrame", &expr);
+    let mut expr = AssignNewFrame{}.run(expr);
+    compile_formatter("AssignNewFrame", &expr);
     // let mut loop_id = 1;
     // loop {
     //     println!("The {}-th iteration", loop_id);
     //     loop_id += 1;
 
-    //     expr = FinalizeFrameLocations{}.run(expr);
-    //     compile_formatter("FinalizeFrameLocations", &expr);
-    //     expr = SelectInstructions{}.run(expr);
-    //     compile_formatter("SelectInstructions", &expr);
+        expr = FinalizeFrameLocations{}.run(expr);
+        compile_formatter("FinalizeFrameLocations", &expr);
+        expr = SelectInstructions{}.run(expr);
+        compile_formatter("SelectInstructions", &expr);
     //     expr = UncoverRegisterConflict{}.run(expr);
     //     compile_formatter("UncoverRegisterConflict", &expr);
     //     expr = AssignRegister{}.run(expr);
