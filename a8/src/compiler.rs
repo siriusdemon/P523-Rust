@@ -1781,6 +1781,17 @@ impl FinalizeLocations {
                 }}}
                 return Set (Box::new(new_e1), Box::new(new_e2));
             },
+            Mref (box base, box offset) => {
+                let new_base = self.replace_uvar(bindings, base);
+                let new_offset = self.replace_uvar(bindings, offset);
+                return Mref (Box::new(new_base), Box::new(new_offset));
+            }
+            Mset (box base, box offset, box value) => {
+                let new_base = self.replace_uvar(bindings, base);
+                let new_offset = self.replace_uvar(bindings, offset);
+                let new_value = self.replace_uvar(bindings, value);
+                return Mset (Box::new(new_base), Box::new(new_offset), Box::new(new_value));
+            }
             Prim2 (op, box e1, box e2) => {
                 let new_e1 = self.replace_uvar(bindings, e1);
                 let new_e2 = self.replace_uvar(bindings, e2);
@@ -2381,30 +2392,30 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
         compile_formatter("FinalizeFrameLocations", &expr);
         expr = SelectInstructions{}.run(expr);
         compile_formatter("SelectInstructions", &expr);
-    //     expr = UncoverRegisterConflict{}.run(expr);
-    //     compile_formatter("UncoverRegisterConflict", &expr);
-    //     expr = AssignRegister{}.run(expr);
-    //     compile_formatter("AssignRegister", &expr);
+        expr = UncoverRegisterConflict{}.run(expr);
+        compile_formatter("UncoverRegisterConflict", &expr);
+        expr = AssignRegister{}.run(expr);
+        compile_formatter("AssignRegister", &expr);
 
     //     if everybody_home(&expr) {
     //         break;
     //     }
 
-    //     expr = AssignFrame{}.run(expr);
-    //     compile_formatter("AssignFrame", &expr);
+        expr = AssignFrame{}.run(expr);
+        compile_formatter("AssignFrame", &expr);
     // }
-    // let expr = DiscardCallLive{}.run(expr);
-    // compile_formatter("DiscardCallLive", &expr);
-    // let expr = FinalizeLocations{}.run(expr);
-    // compile_formatter("Finalizelocations", &expr);
-    // let expr = UpdateFrameLocations{}.run(expr);
-    // compile_formatter("UpdateFrameLocations", &expr);
-    // let expr = ExposeBasicBlocks{}.run(expr);
-    // compile_formatter("ExposeBasicBlocks", &expr);
-    // let expr = OptimizeJump{}.run(expr);
-    // compile_formatter("OptimizeJump", &expr);
-    // let expr = FlattenProgram{}.run(expr);
-    // compile_formatter("FlattenProgram", &expr);
+    let expr = DiscardCallLive{}.run(expr);
+    compile_formatter("DiscardCallLive", &expr);
+    let expr = FinalizeLocations{}.run(expr);
+    compile_formatter("Finalizelocations", &expr);
+    let expr = UpdateFrameLocations{}.run(expr);
+    compile_formatter("UpdateFrameLocations", &expr);
+    let expr = ExposeBasicBlocks{}.run(expr);
+    compile_formatter("ExposeBasicBlocks", &expr);
+    let expr = OptimizeJump{}.run(expr);
+    compile_formatter("OptimizeJump", &expr);
+    let expr = FlattenProgram{}.run(expr);
+    compile_formatter("FlattenProgram", &expr);
     // let expr = CompileToAsm{}.run(expr);
     // compile_formatter("CompileToAsm", &expr);
     // return GenerateAsm{}.run(expr, filename)
