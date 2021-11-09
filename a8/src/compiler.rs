@@ -1184,6 +1184,7 @@ impl SelectInstructions {
                     op   => panic!("Invalid relop {}", op),
                 }
             }
+            Prim2 (relop, box Int64 (i1), box Int64 (i2)) => self.relop_int_rewrite(relop, Int64 (i1), Int64 (i2), unspills),
             If (box pred, box b1, box b2) => {
                 let new_b1 = self.select_instruction_pred(unspills, b1);
                 let new_b2 = self.select_instruction_pred(unspills, b2);
@@ -1282,6 +1283,14 @@ impl SelectInstructions {
             return Begin (vec![expr1, expr2]);
         }
         return Prim2 (relop, Box::new(Symbol (a)), Box::new(Symbol (b)));
+    }
+
+    fn relop_int_rewrite(&self, relop: String, a: Expr, b: Expr, unspills: &mut HashSet<String>) -> Expr {
+        let new_uvar = gen_uvar();
+        unspills.insert(new_uvar.clone());
+        let expr1 = set1(Symbol (new_uvar.clone()), a);
+        let expr2 = Prim2 (relop, Box::new(Symbol (new_uvar)), Box::new(b));
+        return Begin (vec![expr1, expr2]);
     }
 
     fn set1_fv_rewrite(&self, a: String, b: String, unspills: &mut HashSet<String>) -> Expr {
@@ -2180,7 +2189,8 @@ impl CompileToAsm {
                     Push (Box::new(R13)),
                     Push (Box::new(R14)),
                     Push (Box::new(R15)),
-                    self.op2("movq", RDI, RBP),
+                    self.op2("movq", RDI, self.string_to_reg(FRAME_POINTER_REGISTER)),
+                    self.op2("movq", RSI, self.string_to_reg(ALLOCATION_REGISTER)),
                     self.op2("leaq", DerefLabel(Box::new(RIP), Box::new(Label ("_scheme_exit".to_string()))), self.string_to_reg(RETRUN_ADDRESS_REGISTER)),
                 ];
                 codes.append(&mut self.tail_to_asm(tail));
@@ -2280,11 +2290,31 @@ impl CompileToAsm {
                 let binop = self.asm_binop(&op);
                 return self.op2(binop, src, dst);
             },
+            Set (box dst, box Mref (box Int64 (i), box reg)) | Set (box dst, box Mref (box reg, box Int64 (i))) => {
+                let dst = self.expr_to_asm_helper(dst);
+                let src = Deref (Box::new(self.expr_to_asm_helper(reg)), i);
+                return self.op2("movq", src, dst);
+            }
+            Set (box dst, box Mref (box reg1, box reg2)) => {
+                let dst = self.expr_to_asm_helper(dst);
+                let src = DerefRegister (Box::new(self.expr_to_asm_helper(reg1)), Box::new(self.expr_to_asm_helper(reg2)));
+                return self.op2("movq", src, dst);
+            }
             Set (box dst, box src) => {
                 let dst = self.expr_to_asm_helper(dst);
                 let src = self.expr_to_asm_helper(src);
                 return self.op2("movq", src, dst);
             },
+            Mset (box Int64 (i), box reg, box value) | Mset (box reg, box Int64 (i), box value) => {
+                let dst = Deref (Box::new(self.expr_to_asm_helper(reg)), i);
+                let src = self.expr_to_asm_helper(value);
+                return self.op2("movq", src, dst);
+            }
+            Mset (box reg1, box reg2, box value) => {
+                let dst = DerefRegister (Box::new(self.expr_to_asm_helper(reg1)), Box::new(self.expr_to_asm_helper(reg2)));
+                let src = self.expr_to_asm_helper(value);
+                return self.op2("movq", src, dst);
+            }
             Funcall (s, _) if is_fv(&s) => {
                 let deref = self.fv_to_deref(&s);
                 return Jmp (Box::new(deref));
@@ -2383,10 +2413,10 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("PreAssignFrame", &expr);
     let mut expr = AssignNewFrame{}.run(expr);
     compile_formatter("AssignNewFrame", &expr);
-    // let mut loop_id = 1;
-    // loop {
-    //     println!("The {}-th iteration", loop_id);
-    //     loop_id += 1;
+    let mut loop_id = 1;
+    loop {
+        println!("The {}-th iteration", loop_id);
+        loop_id += 1;
 
         expr = FinalizeFrameLocations{}.run(expr);
         compile_formatter("FinalizeFrameLocations", &expr);
@@ -2397,13 +2427,13 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
         expr = AssignRegister{}.run(expr);
         compile_formatter("AssignRegister", &expr);
 
-    //     if everybody_home(&expr) {
-    //         break;
-    //     }
+        if everybody_home(&expr) {
+            break;
+        }
 
         expr = AssignFrame{}.run(expr);
         compile_formatter("AssignFrame", &expr);
-    // }
+    }
     let expr = DiscardCallLive{}.run(expr);
     compile_formatter("DiscardCallLive", &expr);
     let expr = FinalizeLocations{}.run(expr);
@@ -2416,8 +2446,7 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("OptimizeJump", &expr);
     let expr = FlattenProgram{}.run(expr);
     compile_formatter("FlattenProgram", &expr);
-    // let expr = CompileToAsm{}.run(expr);
-    // compile_formatter("CompileToAsm", &expr);
-    // return GenerateAsm{}.run(expr, filename)
-    Ok(())
+    let expr = CompileToAsm{}.run(expr);
+    compile_formatter("CompileToAsm", &expr);
+    return GenerateAsm{}.run(expr, filename)
 }
