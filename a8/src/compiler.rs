@@ -727,13 +727,6 @@ impl ImposeCallingConvention {
                 exprs.push(set1(sym, Symbol (RETURN_VALUE_REGISTER.to_string())));
                 return Begin (exprs);
             },
-            Set (box sym, box Alloc (box e)) => {
-                let mut exprs = vec![
-                    set1(sym, Symbol (ALLOCATION_REGISTER.to_string())),
-                    make_alloc(e),
-                ];
-                return Begin (exprs);
-            },
             e => e,
         }
     } 
@@ -847,6 +840,14 @@ pub trait UncoverConflict {
                     liveset.insert(s.to_string());
                 }}
                 if let Symbol(s) = offset { if is_uvar(s) || self.type_verify(s) {
+                    liveset.insert(s.to_string());
+                }}
+                return liveset;
+            }
+            Set (box Symbol(s), box Alloc (box e)) => {
+                liveset.remove(s);
+                self.record_conflicts(s, "", &liveset, conflict_graph);
+                if let Symbol(s) = e { if is_uvar(s) || self.type_verify(s) {
                     liveset.insert(s.to_string());
                 }}
                 return liveset;
@@ -1243,6 +1244,13 @@ impl SelectInstructions {
             Set (box Symbol (a), box Mref (box base, box offset)) => {
                 return self.mref_fv_rewrite(a, base, offset, unspills);
             }
+            Set (box Symbol (a), box Alloc (box size)) => {
+                let exprs = vec![
+                    set1(Symbol (a), Symbol (ALLOCATION_REGISTER.to_string())),
+                    make_alloc(size),
+                ];
+                return Begin (exprs);
+            }
             Mset (box Int64 (base), box Int64 (offset), box value) => {
                 return self.mset_int_rewrite(Int64 (base), Int64 (offset), value, unspills);
             }
@@ -1324,7 +1332,7 @@ impl SelectInstructions {
     
     fn replace_fv(&self, expr: Expr, unspills: &mut HashSet<String>, prelude: &mut Vec<Expr>) -> Expr {
         if let Symbol (s) = expr { 
-            if is_fv(&s) {
+            if is_fv(&s) || is_label(&s) {
                 let new_uvar = gen_uvar();
                 unspills.insert(new_uvar.clone());  
                 prelude.push(set1(Symbol (new_uvar.clone()), Symbol (s)));
@@ -2320,12 +2328,18 @@ impl CompileToAsm {
             Mset (box Int64 (i), box reg, box value) | Mset (box reg, box Int64 (i), box value) => {
                 let dst = Deref (Box::new(self.expr_to_asm_helper(reg)), i);
                 let src = self.expr_to_asm_helper(value);
-                return self.op2("movq", src, dst);
+                match &src {
+                    Label (s) => self.op2("leaq", DerefLabel (Box::new(RIP), Box::new(src)), dst),
+                    other => self.op2("movq", src, dst),
+                }
             }
             Mset (box reg1, box reg2, box value) => {
                 let dst = DerefRegister (Box::new(self.expr_to_asm_helper(reg1)), Box::new(self.expr_to_asm_helper(reg2)));
                 let src = self.expr_to_asm_helper(value);
-                return self.op2("movq", src, dst);
+                match &src {
+                    Label (s) => self.op2("leaq", DerefLabel (Box::new(RIP), Box::new(src)), dst),
+                    other => self.op2("movq", src, dst),
+                }
             }
             Funcall (s, _) if is_fv(&s) => {
                 let deref = self.fv_to_deref(&s);

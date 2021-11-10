@@ -150,3 +150,174 @@ fn compile6() {
           (+ (f$1 z.3) (f$2 z.3)))))";
     test_helper(s, "c6.s", 17);
 }
+
+#[test]
+fn compile7() {
+    let s = "
+    (letrec ([f$0 (lambda (a.2) (locals () (+ (mref a.2 0) 13)))])
+      (locals (y.1)
+        (begin
+          (set! y.1 (alloc 16))
+          (mset! y.1 0 10)
+          (f$0 y.1))))";
+    test_helper(s, "c7.s", 23);
+}
+
+#[test]
+fn compile8() {
+    let s = "
+    (letrec ()
+      (locals ()
+        (if (if (= (+ 7 (* 2 4)) (- 20 (+ (+ 1 1) (+ (+ 1 1) 1))))
+                (> 2 3)
+                (< 15 (* 4 4)))
+            (+ 1 (+ 2 (+ 3 (+ 4 5))))
+            0)))";
+    test_helper(s, "c8.s", 0);
+}
+
+#[test]
+fn compile9() {
+    let s = "
+     (letrec ([vector-scale!$0 (lambda (vect.1 scale.2)
+                                (locals (size.3)
+                                  (begin
+                                    (set! size.3 (mref vect.1 0))
+                                    (vector-scale!$1 size.3 vect.1 scale.2))))]
+             [vector-scale!$1 (lambda (offset.4 vect.5 scale.6)
+                                (locals ()
+                                  (if (< offset.4 1)
+                                      0
+                                      (begin
+                                        (mset! vect.5 (* offset.4 8)
+                                               (* (mref vect.5 (* offset.4 8))
+                                                  scale.6))
+                                        (vector-scale!$1 (- offset.4 1)
+                                                         vect.5 scale.6)))))]
+             [vector-sum$2 (lambda (vect.7)
+                             (locals ()
+                               (vector-sum$3 (mref vect.7 0) vect.7)))]
+             [vector-sum$3 (lambda (offset.9 vect.10)
+                             (locals ()
+                               (if (< offset.9 1)
+                                   0
+                                   (+ (mref vect.10 (* offset.9 8))
+                                      (vector-sum$3 (- offset.9 1)
+                                                    vect.10)))))])
+      (locals (vect.11)
+        (begin
+          (set! vect.11 (alloc 48))
+          (mset! vect.11 0 5)
+          (mset! vect.11 8 123)
+          (mset! vect.11 16 10)
+          (mset! vect.11 24 7)
+          (mset! vect.11 32 12)
+          (mset! vect.11 40 57)
+          (vector-scale!$0 vect.11 10)
+          (vector-sum$2 vect.11))))";
+    test_helper(s, "c9.s", 11);
+}
+
+
+#[test]
+fn compile10() {
+    let s = "
+    (letrec ([cc$0 (lambda (fst.1 snd.2)
+                     (locals (ptr.3)
+                       (begin
+                         (set! ptr.3 (alloc 16))
+                         (mset! ptr.3 0 fst.1)
+                         (mset! ptr.3 8 snd.2)
+                         ptr.3)))]
+             [fst$1 (lambda (ptr.4) (locals () (mref ptr.4 0)))]
+             [snd$2 (lambda (ptr.5) (locals () (mref ptr.5 8)))]
+             [length$3 (lambda (ptr.6)
+                         (locals ()
+                           (if (= ptr.6 0)
+                               0
+                               (+ 1 (length$3 (snd$2 ptr.6))))))])
+      (locals ()
+        (length$3 (cc$0 5 (cc$0 10 (cc$0 11 (cc$0 5 (cc$0 15 0))))))))";
+    test_helper(s, "c10.s", 5);
+}
+
+#[test]
+fn compile11() {
+    let s = "
+    (letrec ([cc$0 (lambda (fst.1 snd.2)
+                     (locals (ptr.3)
+                       (begin
+                         (set! ptr.3 (alloc 16))
+                         (mset! ptr.3 0 fst.1)
+                         (mset! ptr.3 8 snd.2)
+                         ptr.3)))]
+             [fst$1 (lambda (ptr.4) (locals () (mref ptr.4 0)))]
+             [snd$2 (lambda (ptr.5) (locals () (mref ptr.5 8)))]
+             [count-leaves$3 (lambda (ptr.6)
+                               (locals ()
+                                 (if (= ptr.6 0)
+                                     1
+                                     (+ (count-leaves$3 (fst$1 ptr.6))
+                                        (count-leaves$3 (snd$2 ptr.6))))))])
+      (locals ()
+        (count-leaves$3
+          (cc$0 
+            (cc$0
+              0
+              (cc$0 0 0))
+            (cc$0
+              (cc$0
+                (cc$0 (cc$0 0 (cc$0 0 0)) 0)
+                0)
+              (cc$0 (cc$0 (cc$0 0 0) (cc$0 0 (cc$0 0 0)))
+                    (cc$0 (cc$0 0 0) 0)))))))";
+    test_helper(s, "c11.s", 16);
+}
+
+#[test]
+fn compile12() {
+    let s = "
+    (letrec ([cc$0 (lambda (fst.1 snd.2)
+                     (locals (ptr.3)
+                       (begin
+                         (set! ptr.3 (alloc 16))
+                         (mset! ptr.3 0 fst.1)
+                         (mset! ptr.3 8 snd.2)
+                         ptr.3)))]
+             [fst$1 (lambda (ptr.4) (locals () (mref ptr.4 0)))]
+             [snd$2 (lambda (ptr.5) (locals () (mref ptr.5 8)))]
+             [add1$3 (lambda (n.6) (locals () (+ n.6 1)))]
+             [map$4 (lambda (f.7 ls.8)
+                      (locals ()
+                        (if (= ls.8 0)
+                            0
+                            (cc$0 (f.7 (fst$1 ls.8)) 
+                                  (map$4 f.7 (snd$2 ls.8))))))]
+             [sum$5 (lambda (ls.9)
+                      (locals ()
+                        (if (= 0 ls.9)
+                            0
+                            (+ (fst$1 ls.9) (sum$5 (snd$2 ls.9))))))])
+      (locals (ls.10)
+        (begin
+          (set! ls.10 (cc$0 5 (cc$0 4 (cc$0 3 (cc$0 2 (cc$0 1 0))))))
+          (set! ls.10 (cc$0 10 (cc$0 9 (cc$0 8 (cc$0 7 (cc$0 6 ls.10))))))
+          (sum$5 (map$4 add1$3 ls.10)))))";
+    test_helper(s, "c12.s", 55);
+}
+
+#[test]
+fn compile13() {
+    let s = "
+    (letrec ([proc$1 (lambda (a.1)
+                       (locals ()
+                         (begin
+                           (+ a.1 5))))])
+      (locals (b.1)
+        (begin
+          (set! b.1 (alloc 8))
+          (mset! b.1 0 proc$1)
+          (set! b.1 (mref b.1 0))
+          (b.1 4))))";
+    test_helper(s, "c13.s", 9);
+}

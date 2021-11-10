@@ -184,11 +184,11 @@ impl fmt::Display for Asm {
             Deref (box reg, n) => write!(f, "{}({})", n, reg),
             DerefLabel (box reg, s) => write!(f, "{}({})", s, reg),
             DerefRegister (box reg1, box reg2) => write!(f, "({},{})", reg1, reg2),
-            Label (s) => write!(f, "{}", s.replace("-", "_").replace("?", "q")),
+            Label (s) => write!(f, "{}", s.replace("-", "_").replace("?", "q").replace("!", "l")),
             Retq => write!(f, "\tretq\n"),
             Push (box a) => write!(f, "\tpushq {}\n", a),
             Pop (box a) => write!(f, "\tpopq {}\n", a),
-            Jmp (box Label(s)) => write!(f, "\tjmp {}\n", s.replace("-", "_").replace("?", "q")),
+            Jmp (box Label(s)) => write!(f, "\tjmp {}\n", s.replace("-", "_").replace("?", "q").replace("!", "l")),
             Jmp (box other) => write!(f, "\tjmp *{}\n", other),
             Jmpif (cc, box Label(s)) => write!(f, "\tj{} {}\n", cc, s),
             Jmpif (cc, other) => write!(f, "\tj{} *{}\n", cc, other),
@@ -197,7 +197,7 @@ impl fmt::Display for Asm {
                 for code in codes {
                     codes_str.push_str( &format!("{}", code) );
                 }
-                return write!(f, "{}:\n{}", labl.replace("-", "_").replace("?", "q"), codes_str);
+                return write!(f, "{}:\n{}", labl.replace("-", "_").replace("?", "q").replace("!", "l"), codes_str);
             }
             Prog (cfgs) => {
                 let mut codes_str = String::new();
