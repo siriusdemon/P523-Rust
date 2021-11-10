@@ -215,7 +215,7 @@ fn compile9() {
           (mset! vect.11 40 57)
           (vector-scale!$0 vect.11 10)
           (vector-sum$2 vect.11))))";
-    test_helper(s, "c9.s", 11);
+    test_helper(s, "c9.s", 2090);
 }
 
 

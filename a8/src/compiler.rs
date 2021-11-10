@@ -91,7 +91,7 @@ fn get_rp(name: &str) -> String {
 
 fn get_rp_nontail(name: &str) -> String {
     let salt = gensym("");
-    format!("rpnt_{}_{}", name, salt)
+    format!("rpnt${}_{}", name.replace(".", "").replace("$", ""), salt)
 }
 
 fn flatten_begin(expr: Expr) -> Expr {
@@ -1239,7 +1239,7 @@ impl SelectInstructions {
                 return self.set1_fv_rewrite(a, b, unspills);
             }
             Set (box Symbol (a), box Mref (box Int64 (base), box Int64 (offset))) => {
-                return self.mref_int_rewrite(a, Int64 (base), Int64 (offset));
+                return self.mref_int_rewrite(a, Int64 (base), Int64 (offset), unspills);
             }
             Set (box Symbol (a), box Mref (box base, box offset)) => {
                 return self.mref_fv_rewrite(a, base, offset, unspills);
@@ -1342,16 +1342,33 @@ impl SelectInstructions {
         return expr;
     }
     
-    fn mref_int_rewrite(&self, a: String, base: Expr, offset: Expr) -> Expr {
+    fn mref_int_rewrite(&self, mut a: String, base: Expr, offset: Expr, unspills: &mut HashSet<String>) -> Expr {
+        if is_reg(&a) {
+            let exprs = vec![
+                set1(Symbol (a.clone()), base),
+                set1(Symbol (a.clone()), Mref (Box::new(Symbol (a)), Box::new(offset))),
+            ];
+            return Begin (exprs);
+        }
+        let new_uvar = gen_uvar();
+        unspills.insert(new_uvar.clone());
         let exprs = vec![
-            set1(Symbol (a.clone()), base),
-            set1(Symbol (a.clone()), Mref (Box::new(Symbol (a)), Box::new(offset))),
+            set1(Symbol (new_uvar.clone()), base),
+            set1(Symbol (new_uvar.clone()), Mref (Box::new(Symbol (new_uvar.clone())), Box::new(offset))),
+            set1(Symbol (a), Symbol (new_uvar)),
         ];
         return Begin (exprs);
     }
 
-    fn mref_fv_rewrite(&self, a: String, base: Expr, offset: Expr, unspills: &mut HashSet<String>) -> Expr {
+    fn mref_fv_rewrite(&self, mut a: String, base: Expr, offset: Expr, unspills: &mut HashSet<String>) -> Expr {
         // so, base and offset should not be fv.
+        // make sure a is a register
+        let mut old_a = String::new();
+        if !is_reg(&a) {
+            old_a = a;
+            a = gen_uvar();
+            unspills.insert(a.clone());
+        }
         let mut exprs = vec![];
         let new_base = if let Symbol (b) = base { 
             if is_fv(&b) {
@@ -1371,9 +1388,12 @@ impl SelectInstructions {
                 Symbol (new_uvar)
             } else { Symbol (o) }
         } else { offset };
-        let new_mref = set1(Symbol (a), Mref (Box::new(new_base), Box::new(new_offset)));
-        if exprs.len() == 0 { return new_mref; }
+        let new_mref = set1(Symbol (a.clone()), Mref (Box::new(new_base), Box::new(new_offset)));
         exprs.push(new_mref);
+        // restore old a
+        if old_a.as_str() != "" {
+            exprs.push( set1(Symbol (old_a), Symbol (a)) ) ;
+        }
         return Begin (exprs);
     }
 
