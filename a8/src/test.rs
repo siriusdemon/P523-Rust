@@ -307,6 +307,39 @@ fn compile12() {
 }
 
 #[test]
+fn compile122() {
+    let s = "
+    (letrec ([cc$0 (lambda (fst.1 snd.2)
+                     (locals (ptr.3)
+                       (begin
+                         (set! ptr.3 (alloc 16))
+                         (mset! ptr.3 0 fst.1)
+                         (mset! ptr.3 8 snd.2)
+                         ptr.3)))]
+             [fst$1 (lambda (ptr.4) (locals () (mref ptr.4 0)))]
+             [snd$2 (lambda (ptr.5) (locals () (mref ptr.5 8)))]
+             [add1$3 (lambda (n.6) (locals () (+ n.6 1)))]
+             [map$4 (lambda (f.7 ls.8)
+                      (locals ()
+                        (if (= ls.8 0)
+                            0
+                            (cc$0 (f.7 (fst$1 ls.8)) 
+                                  (map$4 f.7 (snd$2 ls.8))))))]
+             [sum$5 (lambda (ls.9)
+                      (locals ()
+                        (if (= 0 ls.9)
+                            0
+                            (+ (fst$1 ls.9) (sum$5 (snd$2 ls.9))))))])
+      (locals (ls.10)
+        (begin
+          (set! ls.10 (cc$0 5 (cc$0 4 (cc$0 3 (cc$0 2 (cc$0 1 0))))))
+          (set! ls.10 (cc$0 10 (cc$0 9 (cc$0 8 (cc$0 7 (cc$0 6 ls.10))))))
+          (sum$5 ls.10))))";
+    test_helper(s, "c122.s", 55);
+}
+
+
+#[test]
 fn compile13() {
     let s = "
     (letrec ([proc$1 (lambda (a.1)
@@ -320,4 +353,85 @@ fn compile13() {
           (set! b.1 (mref b.1 0))
           (b.1 4))))";
     test_helper(s, "c13.s", 9);
+}
+
+
+#[test]
+fn compile14() {
+    let s = "
+    (letrec ()
+      (locals (x.15)
+        (begin
+          (set! x.15 (alloc 16))
+          (if (= 10 11) (nop) (mset! x.15 0 12))
+          (set! x.15 x.15)
+          (mset! x.15 8 x.15)
+          (set! x.15 (mref x.15 8))
+          (mref x.15 0))))";
+    test_helper(s, "c14.s", 12);
+}
+
+#[test]
+fn compile15() {
+    let s = "
+    (letrec ([make-list$0 (lambda (length.0)
+                            (locals ()
+                              (alloc (byte-offset$3 length.0))))]
+             [fill-list$1 (lambda (content.0 value.1 length.2)
+                            (locals ()
+                              (fill-list-helper$2 content.0
+                                                  value.1
+                                                  0
+                                                  length.2)))]
+             [fill-list-helper$2 (lambda (content.0 value.1 index.2 length.3)
+                                   (locals ()
+                                     (if (= index.2 length.3)
+                                         content.0
+                                         (begin
+                                           (mset! content.0
+                                                  (byte-offset$3 index.2)
+                                                  value.1)
+                                           (fill-list-helper$2 content.0
+                                                               value.1
+                                                               (+ index.2 1)
+                                                               length.3)))))]
+             [byte-offset$3 (lambda (int.0)
+                              (locals ()
+                                (* int.0 8)))])
+      (locals (length.10 value.5)
+        (begin
+          (set! length.10 10)
+          (set! value.5 5)
+          (mref (fill-list$1 (make-list$0 length.10)
+                             value.5
+                             length.10)
+                (byte-offset$3 (- length.10 1))))))";
+    test_helper(s, "c15.s", 5);
+}
+
+// func still not a value
+#[test]
+#[should_panic()]
+fn compile16() {
+    let s = "
+    (letrec ([thunk-num$0 (lambda (n.1)
+                            (locals (th.2)
+                              (begin 
+                                (set! th.2 (alloc 16))
+                                (mset! th.2 0 force-th$1)
+                                (mset! th.2 8 n.1)
+                                th.2)))]
+             [force-th$1 (lambda (cl.3)
+                           (locals ()
+                             (mref cl.3 8)))]
+             [add-ths$2 (lambda (cl1.4 cl2.5 cl3.6 cl4.7)
+                          (locals ()
+                            (+ (+ ((mref cl1.4 0) cl1.4)
+                                  ((mref cl2.5 0) cl2.5))
+                               (+ ((mref cl3.6 0) cl3.6)
+                                  ((mref cl4.7 0) cl4.7)))))])
+      (locals ()
+        (add-ths$2 (thunk-num$0 5) (thunk-num$0 17) (thunk-num$0 7)
+                   (thunk-num$0 9))))";
+    test_helper(s, "c16.s", 38);
 }
