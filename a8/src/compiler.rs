@@ -395,7 +395,7 @@ impl RemoveComplexOpera {
             Alloc (box e) => {
                 let new_e = self.reduce_value(e, locals, prelude);
                 let new_uvar = gen_uvar();
-                let assign = set1(Symbol (new_uvar.clone()), new_e);
+                let assign = set1(Symbol (new_uvar.clone()), Alloc (Box::new(new_e)));
                 prelude.push(assign);
                 locals.insert(new_uvar.clone());
                 return Symbol (new_uvar)
@@ -515,6 +515,7 @@ impl FlattenSet {
             Begin (mut exprs) => {
                 let mut tail = exprs.pop().unwrap();
                 tail = self.simplify_set(sym, tail);
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e)).collect();
                 exprs.push(tail);
                 return flatten_begin(Begin (exprs));
             }
@@ -1645,6 +1646,17 @@ impl FinalizeFrameLocations {
                 }}}
                 return Set (Box::new(new_e1), Box::new(new_e2));
             },
+            Mref (box base, box offset) => {
+                let new_base = self.finalize_frame_locations(bindings, base);
+                let new_offset = self.finalize_frame_locations(bindings, offset);
+                return Mref (Box::new(new_base), Box::new(new_offset));
+            }
+            Mset (box base, box offset, box value) => {
+                let new_base = self.finalize_frame_locations(bindings, base);
+                let new_offset = self.finalize_frame_locations(bindings, offset);
+                let new_value = self.finalize_frame_locations(bindings, value);
+                return Mset (Box::new(new_base), Box::new(new_offset), Box::new(new_value));
+            }
             Prim2 (op, box e1, box e2) => {
                 let new_e1 = self.finalize_frame_locations(bindings, e1);
                 let new_e2 = self.finalize_frame_locations(bindings, e2);

@@ -19,10 +19,11 @@ fn run_helper(filename: &str) -> String {
     return String::from_utf8_lossy(&output.stdout).to_string();
 }
 
-fn test_helper(program: &str, filename: &str, expect: &str) {
+fn test_helper(program: &str, filename: &str, expect: i64) {
     compile(program, filename);
     let r = run_helper(filename);
-    assert_eq!(r.as_str(), expect);
+    let expect_str = format!("{}\n", expect);
+    assert_eq!(r, expect_str);
 }
 
 #[test]
@@ -38,7 +39,7 @@ fn compile1() {
                            (set! a.1 x.2))
                        a.1)
                 (begin (set! a.1 8) a.1)))))";
-    test_helper(s, "c1.s", "3\n");
+    test_helper(s, "c1.s", 3);
 }
 
 #[test]
@@ -67,7 +68,7 @@ fn compile2() {
           (mset! ls.1 32 8)
           (mset! ls.1 40 3)
           (member$0 4 ls.1))))";
-    test_helper(s, "c2.s", "0\n");
+    test_helper(s, "c2.s", 0);
 }
 
 #[test]
@@ -82,7 +83,7 @@ fn compile3() {
         (begin
           (set! x.3 (a$1 (alloc 8) 10 6))
           (mref x.3 0))))";
-    test_helper(s, "c3.s", "16\n");
+    test_helper(s, "c3.s", 16);
 }
 
 #[test]
@@ -105,5 +106,47 @@ fn compile4() {
           (a$1 m.3 40)
           (a$1 m.3 48)
           (mref m.3 48))))";
-    test_helper(s, "c4.s", "\n");
+    test_helper(s, "c4.s", 32);
+}
+
+
+#[test]
+fn compile5() {
+    let s = "
+    (letrec ([f$0 (lambda (c.3 d.4)
+                    (locals (e.5)
+                      (- (mref c.3 (mref d.4 8))
+                         (begin
+                           (set! e.5 (alloc 16))
+                           (mset! e.5 0 (mref c.3 0))
+                           (mset! e.5 8 (mref d.4 0))
+                           (if (> (mref e.5 0) (mref e.5 8))
+                               (mref e.5 8)
+                               (mref e.5 0))))))])
+      (locals (a.1 b.2)
+        (begin
+          (set! a.1 (alloc 24))
+          (set! b.2 (alloc 16))
+          (mset! a.1 0 8)
+          (mset! a.1 8 (+ (mref a.1 0) (mref a.1 0)))
+          (mset! a.1 16 (+ (mref a.1 0) (mref a.1 8)))
+          (mset! b.2 0 (mref a.1 16))
+          (mset! b.2 8 (- (mref b.2 0) (mref a.1 0)))
+          (f$0 a.1 b.2))))";
+    test_helper(s, "c5.s", 16);
+}
+
+
+#[test]
+fn compile6() {
+    let s = "
+    (letrec ([f$1 (lambda (x.1) (locals () (mref x.1 0)))]
+             [f$2 (lambda (x.2) (locals () (mref x.2 8)))])
+      (locals (z.3)
+        (begin
+          (set! z.3 (alloc 32))
+          (mset! z.3 0 5)
+          (mset! z.3 8 12)
+          (+ (f$1 z.3) (f$2 z.3)))))";
+    test_helper(s, "c6.s", 17);
 }
