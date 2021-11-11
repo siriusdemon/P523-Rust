@@ -37,4 +37,6 @@ Tests, you can understand them absolutely.
 
 If you have any questions, please open a new issue at this repo.
 
+By the way, [yscheme.ss](./yscheme.ss) is a good reference.
+
 Have a Good Time!
