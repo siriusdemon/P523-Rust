@@ -1909,7 +1909,11 @@ impl UpdateFrameLocations {
                 assert_eq!(offset_b1, offset_b2);
                 return (if2(new_pred, new_b1, new_b2), offset_b1)
             }
-            e => (e, offset),
+            Funcall (mut labl, args) => {
+                if is_fv(&labl) { labl = self.update_location(&labl, offset); }     
+                return (Funcall (labl, args), offset);
+            }
+            any => panic!("Invalid tail {}", any)
         }
     }
 

@@ -292,7 +292,7 @@ fn compile12() {
                       (locals ()
                         (if (= ls.8 0)
                             0
-                            (cc$0 (+ 1 (fst$1 ls.8)) 
+                            (cc$0 (f.7 (fst$1 ls.8)) 
                                   (map$4 f.7 (snd$2 ls.8))))))]
              [sum$5 (lambda (ls.9)
                       (locals ()

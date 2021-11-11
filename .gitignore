@@ -14,4 +14,4 @@ t
 test_*
 *.s
 invalid
-*.ss
+log
