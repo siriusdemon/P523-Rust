@@ -727,15 +727,34 @@ fn compile25() {
                          ptr.3)))]
              [add1$3 (lambda (n.6) (locals () (+ n.6 1)))]
              [map$4 (lambda (f.7 ls.8)
-                      (locals ()
+                      (locals (t.100 s.101 q.102)
                         (if (= ls.8 0)
                             0
-                            (cc$0 (+ 1 (mref ls.8 0))
-                                  (map$4 f.7 (mref ls.8 8))))))])
+                            (begin
+                                (set! t.100 (mref ls.8 0))
+                                (set! q.102 (mref ls.8 8))
+                                (set! s.101 (+ 1 t.100))
+                                (cc$0 s.101 (map$4 f.7 q.102))))))])
       (locals (ls.10 r.11)
         (begin
           (set! ls.10 (cc$0 1 0))
           (set! r.11 (map$4 add1$3 ls.10))
           (mref r.11 0))))";
     test_helper(s, "c25.s", 2);
+}
+
+#[test]
+fn compile26() {
+    let s = "
+    (letrec ([add1$3 (lambda (n.6) (locals () (+ n.6 1)))]
+             [high$4 (lambda (f.7)
+                      (locals (s.101)
+                        (begin
+                            (set! s.101 (f.7 1))
+                            (f.7 s.101))))])
+      (locals (r.11)
+        (begin
+          (set! r.11 (high$4 add1$3))
+          r.11)))";
+    test_helper(s, "c26.s", 2);
 }
