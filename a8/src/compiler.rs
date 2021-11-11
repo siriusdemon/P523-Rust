@@ -700,6 +700,7 @@ impl ImposeCallingConvention {
                 let mut liveset = vec![
                     Symbol (FRAME_POINTER_REGISTER.to_string()),
                     Symbol (RETRUN_ADDRESS_REGISTER.to_string()),
+                    Symbol (ALLOCATION_REGISTER.to_string()),
                 ];
                 if args.len() > PARAMETER_REGISTERS.len() {
                     let mut fvs = vec![];

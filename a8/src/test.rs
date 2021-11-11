@@ -746,15 +746,14 @@ fn compile25() {
 #[test]
 fn compile26() {
     let s = "
-    (letrec ([add1$3 (lambda (n.6) (locals () (+ n.6 1)))]
+    (letrec ([add1$3 (lambda () (locals () 1))]
              [high$4 (lambda (f.7)
-                      (locals (s.101)
+                      (locals ()
                         (begin
-                            (set! s.101 (f.7 1))
-                            (f.7 s.101))))])
-      (locals (r.11)
+                            (f.7)
+                            (f.7))))])
+      (locals ()
         (begin
-          (set! r.11 (high$4 add1$3))
-          r.11)))";
-    test_helper(s, "c26.s", 2);
+          (high$4 add1$3))))";
+    test_helper(s, "c26.s", 1);
 }
