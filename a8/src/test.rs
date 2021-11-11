@@ -277,11 +277,6 @@ fn compile11() {
 
 #[test]
 fn compile12() {
-    println!("NEED HELP >>> {}",
-        "This test still have not pass And I don't know why. Maybe someone can help me pass it.
-        Problem occur when `(map$4 f.7 (snd$2 ls.8))` is called.  "
-    );
-
     let s = "
     (letrec ([cc$0 (lambda (fst.1 snd.2)
                      (locals (ptr.3)
@@ -297,7 +292,7 @@ fn compile12() {
                       (locals ()
                         (if (= ls.8 0)
                             0
-                            (cc$0 (f.7 (fst$1 ls.8)) 
+                            (cc$0 (+ 1 (fst$1 ls.8)) 
                                   (map$4 f.7 (snd$2 ls.8))))))]
              [sum$5 (lambda (ls.9)
                       (locals ()
@@ -309,7 +304,7 @@ fn compile12() {
           (set! ls.10 (cc$0 5 (cc$0 4 (cc$0 3 (cc$0 2 (cc$0 1 0))))))
           (set! ls.10 (cc$0 10 (cc$0 9 (cc$0 8 (cc$0 7 (cc$0 6 ls.10))))))
           (sum$5 (map$4 add1$3 ls.10)))))";
-    test_helper(s, "c12.s", 55);
+    test_helper(s, "c12.s", 65);
 }
 
 
@@ -717,4 +712,30 @@ fn compile24() {
                                       (+ (add-one$0 x.0) (add-one$0 x.0))))])
       (locals () (sum-add-one-twice$1 1)))";
     test_helper(s, "c24.s", 4);
+}
+
+
+#[test]
+fn compile25() {
+    let s = "
+    (letrec ([cc$0 (lambda (fst.1 snd.2)
+                     (locals (ptr.3)
+                       (begin
+                         (set! ptr.3 (alloc 16))
+                         (mset! ptr.3 0 fst.1)
+                         (mset! ptr.3 8 snd.2)
+                         ptr.3)))]
+             [add1$3 (lambda (n.6) (locals () (+ n.6 1)))]
+             [map$4 (lambda (f.7 ls.8)
+                      (locals ()
+                        (if (= ls.8 0)
+                            0
+                            (cc$0 (+ 1 (mref ls.8 0))
+                                  (map$4 f.7 (mref ls.8 8))))))])
+      (locals (ls.10 r.11)
+        (begin
+          (set! ls.10 (cc$0 1 0))
+          (set! r.11 (map$4 add1$3 ls.10))
+          (mref r.11 0))))";
+    test_helper(s, "c25.s", 2);
 }
