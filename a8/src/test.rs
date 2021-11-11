@@ -274,8 +274,14 @@ fn compile11() {
     test_helper(s, "c11.s", 16);
 }
 
+
 #[test]
 fn compile12() {
+    println!("NEED HELP >>> {}",
+        "This test still have not pass And I don't know why. Maybe someone can help me pass it.
+        Problem occur when `(map$4 f.7 (snd$2 ls.8))` is called.  "
+    );
+
     let s = "
     (letrec ([cc$0 (lambda (fst.1 snd.2)
                      (locals (ptr.3)
@@ -304,6 +310,20 @@ fn compile12() {
           (set! ls.10 (cc$0 10 (cc$0 9 (cc$0 8 (cc$0 7 (cc$0 6 ls.10))))))
           (sum$5 (map$4 add1$3 ls.10)))))";
     test_helper(s, "c12.s", 55);
+}
+
+
+#[test]
+fn compile_high_order_fn() {
+    let s = "
+    (letrec ([high_order$0 (lambda (f.1 a.2)
+                            (locals ()
+                                (f.1 a.2)))]
+             [add$1 (lambda (b.3) (locals () (+ b.3 1)))])
+      (locals ()
+        (high_order$0 add$1 10)))";
+    
+    test_helper(s, "high.s", 11);
 }
 
 #[test]
@@ -434,4 +454,267 @@ fn compile16() {
         (add-ths$2 (thunk-num$0 5) (thunk-num$0 17) (thunk-num$0 7)
                    (thunk-num$0 9))))";
     test_helper(s, "c16.s", 38);
+}
+
+#[test]
+fn compile17() {
+    let s = "
+    (letrec ([f$0 (lambda (p.2 i.3 i.4)
+                    (locals () (- (mref p.2 i.3) (mref p.2 i.4))))])
+      (locals (x.1)
+        (begin
+          (set! x.1 (alloc 16))
+          (mset! x.1 0 73)
+          (mset! x.1 8 35)
+          (+ (f$0 x.1 0 8) -41))))";
+    test_helper(s, "c17.s", -3);
+}
+
+#[test]
+fn compile18() {
+    let s = "
+    (letrec ([f$0 (lambda (p.3)
+                    (locals (p.4)
+                      (- (mref
+                           (mref (mref (mref (mref p.3 0) 0) 8) 0)
+                           (mref (mref p.3 8) (mref (mref p.3 0) 32)))
+                         (mref
+                           (mref p.3 (mref p.3 16))
+                           (mref (mref p.3 0) (mref p.3 32))))))])
+      (locals (x.1 x.2)
+        (begin
+          (set! x.1 (alloc 48))
+          (set! x.2 (alloc 56))
+          (mset! x.1 0 x.2)
+          (mset! x.1 8 x.1)
+          (mset! x.2 0 x.1)
+          (mset! x.2 8 -4421)
+          (mset! x.1 16 0)
+          (mset! x.1 24 -37131)
+          (mset! x.1 32 32)
+          (mset! x.1 40 48)
+          (mset! x.2 16 -55151)
+          (mset! x.2 24 -32000911)
+          (mset! x.2 32 40)
+          (mset! x.2 40 55)
+          (mset! x.2 48 -36)
+          (* (f$0 x.1) 2))))";
+    test_helper(s, "c18.s", -182);
+}
+
+#[test]
+fn compile19() {
+    let s = "
+    (letrec ([make-vector$0 (lambda (size.1)
+                              (locals (v.2)
+                                (begin
+                                  (set! v.2 (alloc (+ (* size.1 8) 8)))
+                                  (mset! 0 v.2 size.1)
+                                  v.2)))]
+             [chained-vector-set!$1 (lambda (v.3 off.4 val.5)
+                                      (locals ()
+                                        (begin
+                                          (mset! (* (+ off.4 1) 8) v.3 val.5)
+                                          v.3)))]
+             [vector-length$4 (lambda (v.8) (locals () (mref v.8 0)))]
+             [find-greatest-less-than$2 (lambda (v.6 val.7)
+                                          (locals ()
+                                            (fglt-help$3 v.6 val.7 (+ v.6 8)
+                                              (vector-length$4 v.6))))]
+             [fglt-help$3 (lambda (v.9 val.10 curr.11 size.12)
+                            (locals ()
+                              (if (if (> curr.11 (+ (+ v.9 (* size.12 8)) 8))
+                                      (true)
+                                      (> (mref curr.11 0) val.10))
+                                  (mref curr.11 -8)
+                                  (fglt-help$3 v.9 val.10 (+ curr.11 8)
+                                               size.12))))])
+      (locals (v.13)
+        (begin
+          (set! v.13 (chained-vector-set!$1
+                       (chained-vector-set!$1 
+                         (chained-vector-set!$1 
+                           (chained-vector-set!$1 
+                             (chained-vector-set!$1 
+                               (chained-vector-set!$1 
+                                 (chained-vector-set!$1 
+                                   (chained-vector-set!$1 
+                                     (chained-vector-set!$1 
+                                       (chained-vector-set!$1 
+                                         (make-vector$0 10) 0 0)
+                                       1 10)
+                                     2 20)
+                                   3 30)
+                                 4 40)
+                               5 50)
+                             6 60)
+                           7 70)
+                         8 80)
+                       9 90))
+          (find-greatest-less-than$2 v.13 76))))";
+    test_helper(s, "c19.s", 70);
+}
+
+#[test]
+fn compile20() {
+    let s = "
+    (letrec ([make-vector$0 (lambda (size.1)
+                              (locals (v.20)
+                                (begin
+                                  (set! v.20 (alloc (* (+ size.1 1) 8)))
+                                  (mset! 0 v.20 size.1)
+                                  v.20)))]
+             [vector-set!$1 (lambda (vect.2 off.3 val.4)
+                              (locals ()
+                                (begin
+                                  (if (> off.3 (mref vect.2 0))
+                                      (nop)
+                                      (mset! (* (+ off.3 1) 8) vect.2 val.4))
+                                  0)))]
+             [vector-equal?$3 (lambda (vect1.8 vect2.9)
+                                (locals ()
+                                  (if (= (mref 0 vect1.8) (mref 0 vect2.9))
+                                      (vector-equal?$4 vect1.8 vect2.9
+                                                       (- (mref 0 vect1.8) 1))
+                                      0)))]
+             [vector-equal?$4 (lambda (vect1.11 vect2.12 off.10)
+                                (locals ()
+                                  (if (< off.10 0)
+                                      1 
+                                      (if (= (mref (* (+ off.10 1) 8) vect1.11)
+                                             (mref vect2.12 (* (+ off.10 1) 8)))
+                                          (vector-equal?$4 vect1.11 vect2.12
+                                                           (- off.10 1))
+                                          0))))])
+      (locals (v1.13 v2.14)
+        (begin
+          (set! v1.13 (make-vector$0 5))
+          (vector-set!$1 v1.13 0 134)
+          (vector-set!$1 v1.13 1 123)
+          (vector-set!$1 v1.13 2 503)
+          (vector-set!$1 v1.13 3 333)
+          (vector-set!$1 v1.13 4 666)
+          (set! v2.14 (make-vector$0 5))
+          (vector-set!$1 v2.14 0 134)
+          (vector-set!$1 v2.14 1 123)
+          (vector-set!$1 v2.14 2 503)
+          (vector-set!$1 v2.14 3 333)
+          (vector-set!$1 v2.14 4 666)
+          (if (= (vector-equal?$3 v1.13 v2.14) 0)
+              100
+              -100))))";
+    test_helper(s, "c20.s", -100);
+}
+
+#[test]
+#[should_panic()]
+fn compile21() {
+    let s = "
+       (letrec ([stack-new$0 (lambda (size.1)
+                            (locals (stack.2 store.3 meths.4)
+                              (begin
+                                (set! store.3 (alloc (* 8 size.1)))
+                                (set! meths.4 (alloc (* 3 8)))
+                                (set! stack.2 (alloc (* 3 8)))
+                                (mset! meths.4 0 stack-push$2)
+                                (mset! meths.4 8 stack-pop$3)
+                                (mset! meths.4 16 stack-top$4)
+                                (mset! stack.2 0 meths.4)
+                                (mset! stack.2 8 0)
+                                (mset! stack.2 16 store.3)
+                                stack.2)))]
+             [invoke$1 (lambda (obj.5 meth-idx.6)
+                         (locals ()
+                           (mref (mref obj.5 0) (* meth-idx.6 8))))]
+             [stack-push$2 (lambda (self.7 val.8)
+                             (locals ()
+                               (begin
+                                 (mset! (mref self.7 16) 
+                                        (* (mref self.7 8) 8)
+                                        val.8)
+                                 (mset! self.7 8 (+ (mref self.7 8) 1))
+                                 self.7)))]
+             [stack-pop$3 (lambda (self.9)
+                            (locals ()
+                              (begin
+                                (mset! self.9 8 (- (mref 8 self.9) 1))
+                                (mref (mref self.9 16) 
+                                      (* (mref self.9 8) 8)))))]
+             [stack-top$4 (lambda (self.9)
+                            (locals ()
+                              (mref (mref self.9 16) 
+                                    (* (- (mref 8 self.9) 1) 8))))])
+      (locals (s1.10 s2.11 x.1000 x.1001 x.1002)
+        (begin
+          (set! s1.10 (stack-new$0 10))
+          ((invoke$1 s1.10 0) s1.10 10) ;; push 10
+          ((invoke$1 s1.10 0) s1.10 20) ;; push 20
+          ((invoke$1 s1.10 0) s1.10 30) ;; push ... well you get the idea
+          ((invoke$1 s1.10 0) s1.10 40)
+          ((invoke$1 s1.10 0) s1.10 50)
+          ((invoke$1 s1.10 0) s1.10 60)
+          ((invoke$1 s1.10 0) s1.10 70)
+          ((invoke$1 s1.10 0) s1.10 80)
+          ((invoke$1 s1.10 0) s1.10 90)
+          ((invoke$1 s1.10 0) s1.10 100)
+          (set! s2.11 (stack-new$0 6))
+          ((invoke$1 s2.11 0) s2.11 ((invoke$1 s1.10 1) s1.10)) ;; push pop
+          ((invoke$1 s1.10 1) s1.10) ;; pop
+          ((invoke$1 s2.11 0) s2.11 ((invoke$1 s1.10 1) s1.10))
+          ((invoke$1 s1.10 1) s1.10) ;; pop
+          ((invoke$1 s2.11 0) s2.11 ((invoke$1 s1.10 1) s1.10))
+          ((invoke$1 s1.10 1) s1.10) ;; pop
+          ((invoke$1 s2.11 0) s2.11 ((invoke$1 s1.10 1) s1.10))
+          ((invoke$1 s1.10 1) s1.10) ;; pop
+          ((invoke$1 s2.11 0) s2.11 ((invoke$1 s1.10 1) s1.10))
+          ((invoke$1 s2.11 0) s2.11 ((invoke$1 s1.10 1) s1.10))
+          (set! x.1000 (+ ((invoke$1 s2.11 1) s2.11) ((invoke$1 s2.11 1) s2.11)))
+          (* (+ (begin
+                  (set! x.1001 (+ ((invoke$1 s2.11 2) s2.11) ((invoke$1 s2.11 2) s2.11)))
+                  (- x.1001 (+ ((invoke$1 s2.11 1) s2.11) ((invoke$1 s2.11 1) s2.11))))
+                (begin
+                  (set! x.1002 (+ ((invoke$1 s2.11 2) s2.11) ((invoke$1 s2.11 2) s2.11)))
+                  (- (+ ((invoke$1 s2.11 1) s2.11) ((invoke$1 s2.11 1) s2.11)) x.1002)))
+             x.1000))))";
+    test_helper(s, "c21.s", 1);
+}
+
+#[test]
+fn compile22() {
+    let s = "
+    (letrec ([add$0
+               (lambda (x.1 y.2)
+                 (locals (z.3)
+                   (begin
+                     (set! z.3 (alloc 8))
+                     (mset! z.3 0 (+ x.1 y.2))
+                     z.3)))])
+      (locals()
+        (mref (add$0 1 2) 0)))";
+    test_helper(s, "c22.s", 3);
+}
+
+#[test]
+fn compile23() {
+    let s = "
+    (letrec ([d$1 (lambda ()
+                    (locals () (alloc 16)))])
+      (locals (b.2 c.3)
+        (begin
+          (set! b.2 32)
+          (set! c.3 (d$1))
+          (mset! c.3 8 b.2)
+          (mref c.3 8))))";
+    test_helper(s, "c23.s", 32);
+}
+
+#[test]
+fn compile24() {
+    let s = "
+    (letrec ([add-one$0 (lambda (x.0) (locals () (+ x.0 1)))]
+             [sum-add-one-twice$1 (lambda (x.0)
+                                    (locals ()
+                                      (+ (add-one$0 x.0) (add-one$0 x.0))))])
+      (locals () (sum-add-one-twice$1 1)))";
+    test_helper(s, "c24.s", 4);
 }
