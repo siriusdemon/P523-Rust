@@ -5,11 +5,27 @@ use std::collections::HashSet;
 use std::vec::IntoIter;
 use uuid::Uuid;
 
-use crate::syntax::{Expr, Asm, ConflictGraph, Frame};
+use crate::syntax::{Scheme, Expr, Asm, ConflictGraph, Frame};
 use crate::parser::{Scanner, Parser};
 
 use Expr::*;
 use Asm::*;
+
+
+pub struct ParseScheme {}
+impl ParseScheme {
+    pub fn run(&self, scm: &str) -> Scheme {
+        let scanner = Scanner::new(scm);
+        let tokens = scanner.scan();
+        let parser = Parser::new(tokens);
+        let scm = parser.parse();
+        return scm;
+    }
+}
+
+
+
+
 
 // ---------------------- register/frame --------------------------------
 const REGISTERS :[&str; 15] = ["rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
@@ -138,16 +154,6 @@ fn make_alloc(e: Expr) -> Expr {
 }
 
 
-pub struct ParseExpr {}
-impl ParseExpr {
-    pub fn run(&self, expr: &str) -> Expr {
-        let scanner = Scanner::new(expr);
-        let tokens = scanner.scan();
-        let parser = Parser::new(tokens);
-        let expr = parser.parse();
-        return expr;
-    }
-}
 
 pub struct RemoveComplexOpera {}
 impl RemoveComplexOpera {
@@ -2450,54 +2456,55 @@ pub fn everybody_home(expr: &Expr) -> bool {
 }
 
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
-    let expr = ParseExpr{}.run(s);
-    compile_formatter("ParseExpr", &expr);
-    let expr = RemoveComplexOpera{}.run(expr);
-    compile_formatter("RemoveComplexOpera", &expr);
-    let expr = FlattenSet{}.run(expr);
-    compile_formatter("FlattenSet", &expr);
-    let expr = ImposeCallingConvention{}.run(expr);
-    compile_formatter("ImposeCallingConvention", &expr);
-    let expr = UncoverFrameConflict{}.run(expr);
-    compile_formatter("UncoverFrameConflict", &expr);
-    let expr = PreAssignFrame{}.run(expr);
-    compile_formatter("PreAssignFrame", &expr);
-    let mut expr = AssignNewFrame{}.run(expr);
-    compile_formatter("AssignNewFrame", &expr);
-    let mut loop_id = 1;
-    loop {
-        println!("The {}-th iteration", loop_id);
-        loop_id += 1;
+    let expr = ParseScheme{}.run(s);
+    compile_formatter("ParseScheme", &expr);
+    // let expr = RemoveComplexOpera{}.run(expr);
+    // compile_formatter("RemoveComplexOpera", &expr);
+    // let expr = FlattenSet{}.run(expr);
+    // compile_formatter("FlattenSet", &expr);
+    // let expr = ImposeCallingConvention{}.run(expr);
+    // compile_formatter("ImposeCallingConvention", &expr);
+    // let expr = UncoverFrameConflict{}.run(expr);
+    // compile_formatter("UncoverFrameConflict", &expr);
+    // let expr = PreAssignFrame{}.run(expr);
+    // compile_formatter("PreAssignFrame", &expr);
+    // let mut expr = AssignNewFrame{}.run(expr);
+    // compile_formatter("AssignNewFrame", &expr);
+    // let mut loop_id = 1;
+    // loop {
+    //     println!("The {}-th iteration", loop_id);
+    //     loop_id += 1;
 
-        expr = FinalizeFrameLocations{}.run(expr);
-        compile_formatter("FinalizeFrameLocations", &expr);
-        expr = SelectInstructions{}.run(expr);
-        compile_formatter("SelectInstructions", &expr);
-        expr = UncoverRegisterConflict{}.run(expr);
-        compile_formatter("UncoverRegisterConflict", &expr);
-        expr = AssignRegister{}.run(expr);
-        compile_formatter("AssignRegister", &expr);
+    //     expr = FinalizeFrameLocations{}.run(expr);
+    //     compile_formatter("FinalizeFrameLocations", &expr);
+    //     expr = SelectInstructions{}.run(expr);
+    //     compile_formatter("SelectInstructions", &expr);
+    //     expr = UncoverRegisterConflict{}.run(expr);
+    //     compile_formatter("UncoverRegisterConflict", &expr);
+    //     expr = AssignRegister{}.run(expr);
+    //     compile_formatter("AssignRegister", &expr);
 
-        if everybody_home(&expr) {
-            break;
-        }
+    //     if everybody_home(&expr) {
+    //         break;
+    //     }
 
-        expr = AssignFrame{}.run(expr);
-        compile_formatter("AssignFrame", &expr);
-    }
-    let expr = DiscardCallLive{}.run(expr);
-    compile_formatter("DiscardCallLive", &expr);
-    let expr = FinalizeLocations{}.run(expr);
-    compile_formatter("Finalizelocations", &expr);
-    let expr = UpdateFrameLocations{}.run(expr);
-    compile_formatter("UpdateFrameLocations", &expr);
-    let expr = ExposeBasicBlocks{}.run(expr);
-    compile_formatter("ExposeBasicBlocks", &expr);
-    let expr = OptimizeJump{}.run(expr);
-    compile_formatter("OptimizeJump", &expr);
-    let expr = FlattenProgram{}.run(expr);
-    compile_formatter("FlattenProgram", &expr);
-    let expr = CompileToAsm{}.run(expr);
-    compile_formatter("CompileToAsm", &expr);
-    return GenerateAsm{}.run(expr, filename)
+    //     expr = AssignFrame{}.run(expr);
+    //     compile_formatter("AssignFrame", &expr);
+    // }
+    // let expr = DiscardCallLive{}.run(expr);
+    // compile_formatter("DiscardCallLive", &expr);
+    // let expr = FinalizeLocations{}.run(expr);
+    // compile_formatter("Finalizelocations", &expr);
+    // let expr = UpdateFrameLocations{}.run(expr);
+    // compile_formatter("UpdateFrameLocations", &expr);
+    // let expr = ExposeBasicBlocks{}.run(expr);
+    // compile_formatter("ExposeBasicBlocks", &expr);
+    // let expr = OptimizeJump{}.run(expr);
+    // compile_formatter("OptimizeJump", &expr);
+    // let expr = FlattenProgram{}.run(expr);
+    // compile_formatter("FlattenProgram", &expr);
+    // let expr = CompileToAsm{}.run(expr);
+    // compile_formatter("CompileToAsm", &expr);
+    // return GenerateAsm{}.run(expr, filename)
+    Ok(())
 }

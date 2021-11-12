@@ -27,6 +27,83 @@ fn seqs_formatter<E: std::fmt::Display>(form: &str, seqs: impl Iterator<Item=E>,
 }
 
 #[derive(Debug)]
+pub enum Scheme {
+    Letrec(Vec<Scheme>, Box<Scheme>),
+    Locals(HashSet<String>, Box<Scheme>),
+    Let(HashMap<String, Scheme>, Box<Scheme>),
+    Lambda(String, Vec<String>, Box<Scheme>),
+    Begin(Vec<Scheme>),
+    Prim1(String, Box<Scheme>),
+    Prim2(String, Box<Scheme>, Box<Scheme>),
+    If(Box<Scheme>, Box<Scheme>, Box<Scheme>),
+    Set(Box<Scheme>, Box<Scheme>),
+    Alloc(Box<Scheme>),
+    Mref(Box<Scheme>, Box<Scheme>),
+    Mset(Box<Scheme>, Box<Scheme>, Box<Scheme>),
+    Symbol(String),
+    Funcall(String, Vec<Scheme>),
+    Int64(i64),
+    Bool(bool),
+    Nop,
+}
+
+
+impl fmt::Display for Scheme {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Scheme::*;
+        match self {
+            Letrec (lambdas, box body) => {
+                let s = seqs_formatter("letrec", lambdas.iter(), "\n", body);
+                write!(f, "{}", s)
+            },
+            Locals (uvars, box tail) => {
+                let s = seqs_formatter("locals", uvars.iter(), " ", tail);
+                write!(f, "{}", s)
+            }
+            Lambda (label, args, box body) => {
+                let seqs: Vec<String> = args.iter().map(|e| format!("{}", e)).collect();
+                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+                let seqs_s = seqs_ref.join(" ");
+                let s = format!("({} (lambda ({}) {}))", label, seqs_s, body);
+                write!(f, "{}", s)
+            },
+            Let (bindings, box tail) => {
+                 let seqs: Vec<String> = bindings.iter().map(|(k, v)| format!("[{} {}]", k, v)).collect();
+                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+                let seqs_s = seqs_ref.join(" ");
+                let s = format!("(let ({})\n {})", seqs_s, tail);
+                write!(f, "{}", s)
+            }
+            Begin ( exprs ) => {
+                let seqs: Vec<String> = exprs.iter().map(|e| format!("  {}", e)).collect();
+                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+                let seqs_s = seqs_ref.join("\n");
+                write!(f, "(begin \n{})", seqs_s)
+            }
+            Set (box e1, box e2) => write!(f, "(set! {} {})", e1, e2),
+            Prim1 (op, box e) => write!(f, "({} {})", op, e),
+            Prim2 (op, box e1, box e2) => write!(f, "({} {} {})", op, e1, e2),
+            If (box cond, box b1, box b2) => write!(f, "(if {} {} {})", cond, b1, b2),
+            Alloc (box e) => write!(f, "(alloc {})", e),
+            Mref (box base, box offset) => write!(f, "(mref {} {})", base, offset),
+            Mset (box base, box offset, box value) => write!(f, "(mset! {} {} {})", base, offset, value),
+            Symbol (s) => write!(f, "{}", s),
+            Funcall (name, args) => {
+                let seqs: Vec<String> = args.iter().map(|e| format!("{}", e)).collect();
+                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+                let seqs_s = seqs_ref.join(" ");
+                write!(f, "({} {})", name, seqs_s)
+            }
+            Int64 (i) => write!(f, "{}", i),
+            Bool (b) => write!(f, "({})", b),
+            Nop => write!(f, "(nop)"),
+        }
+    }
+}
+
+
+
+#[derive(Debug)]
 pub enum Expr {
     Letrec(Vec<Expr>, Box<Expr>),
     Locals(HashSet<String>, Box<Expr>),
@@ -146,6 +223,7 @@ impl fmt::Display for Expr {
         }
     }
 }
+
 
 
 #[derive(Debug)]

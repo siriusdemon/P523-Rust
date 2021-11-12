@@ -2,7 +2,7 @@ use std::vec::IntoIter;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::syntax::*;
+use crate::syntax::Scheme;
 
 #[derive(Debug, Clone)]
 pub struct Token {
@@ -94,7 +94,7 @@ impl Scanner {
 
 
 
-use Expr::*;
+use Scheme::*;
 pub struct Parser {
     tokens: IntoIter<Token>,
     top: Option<Token>,
@@ -117,12 +117,12 @@ impl Parser {
         Self { tokens, top }
     }
 
-    pub fn parse(mut self) -> Expr {
+    pub fn parse(mut self) -> Scheme {
         self.parse_expr()
     }
 
     // at the very top level, only list and atom allowed
-    pub fn parse_expr(&mut self) -> Expr {
+    pub fn parse_expr(&mut self) -> Scheme {
         if let Some(ref t) = self.top() {
             if t.token.as_str() == "(" {
                 return self.parse_list();
@@ -132,7 +132,7 @@ impl Parser {
         panic!("Unexpected Eof");
     }
 
-    fn parse_atom(&mut self) -> Expr {
+    fn parse_atom(&mut self) -> Scheme {
         let token = &self.top().unwrap().token;
         let chars: Vec<char> = token.chars().collect();
         match chars[0] {
@@ -142,7 +142,7 @@ impl Parser {
         }
     }
 
-    fn parse_list(&mut self) -> Expr {
+    fn parse_list(&mut self) -> Scheme {
         let _left = self.remove_top();
         let top = self.top();
         match top.unwrap().token.as_str() {
@@ -151,6 +151,7 @@ impl Parser {
             "begin" => self.parse_begin(),
             "set!" => self.parse_set(),
             "if" => self.parse_if(),
+            "let" => self.parse_let(),
             "alloc" => self.parse_alloc(),
             "mset!" => self.parse_mset(),
             "mref" => self.parse_mref(),
@@ -163,7 +164,7 @@ impl Parser {
         }
     }
 
-    fn parse_letrec(&mut self) -> Expr {
+    fn parse_letrec(&mut self) -> Scheme {
         let _letrec = self.remove_top();
         let _lambda_left = self.remove_top();
         let mut lambdas = vec![];
@@ -174,13 +175,13 @@ impl Parser {
             } else {
                 let _lambda_right = self.remove_top();
                 let body = self.parse_expr();
-                return Expr::Letrec(lambdas, Box::new(body));
+                return Scheme::Letrec(lambdas, Box::new(body));
             }
         }
         panic!("Parse letrec, unexpected eof");
     }
 
-    fn parse_locals(&mut self) -> Expr {
+    fn parse_locals(&mut self) -> Scheme {
         let _locals = self.remove_top();
         let _uvar_left = self.remove_top();
         let mut uvars = HashSet::new();
@@ -192,14 +193,14 @@ impl Parser {
                 let _uvar_right = self.remove_top();
                 let tail = self.parse_expr();
                 let _right = self.remove_top();
-                return Expr::Locals (uvars, Box::new(tail));
+                return Scheme::Locals (uvars, Box::new(tail));
             }
         }
         panic!("Parse locate, unexpected eof");
     }
 
 
-    fn parse_begin(&mut self) -> Expr {
+    fn parse_begin(&mut self) -> Scheme {
         let _begin = self.remove_top();
         let mut begin_exprs = vec![];
         while let Some(ref t) = self.top() {
@@ -209,22 +210,49 @@ impl Parser {
             } else {
                 assert!(begin_exprs.len() > 0, "begin expr is empty!");
                 let _right = self.remove_top();
-                return Expr::Begin(begin_exprs);
+                return Scheme::Begin(begin_exprs);
             }
         } 
         panic!("Parse Begin, unexpected eof");
     }
 
-    fn parse_if(&mut self) -> Expr {
+    fn parse_if(&mut self) -> Scheme {
         let _if = self.remove_top();
         let cond = self.parse_expr();
         let b1 = self.parse_expr();
         let b2 = self.parse_expr();
         let _right = self.remove_top();
-        return Expr::If(Box::new(cond), Box::new(b1), Box::new(b2));
+        return Scheme::If(Box::new(cond), Box::new(b1), Box::new(b2));
+    }
+    
+    fn parse_let(&mut self) -> Scheme {
+        let _let = self.remove_top();
+        let _binding_left = self.remove_top();
+        let mut bindings = HashMap::new();
+        while let Some(ref t) = self.top() {
+            if t.token.as_str() != ")" {
+                let (var, val) = self.parse_let_binding();
+                bindings.insert(var, val);
+            } else {
+                let _binding_right = self.remove_top();
+                let tail = self.parse_expr();
+                let _right = self.remove_top();
+                return Scheme::Let (bindings, Box::new(tail));
+            }
+        }
+        panic!("Parse let, unexpected eof");
     }
 
-    fn parse_lambda(&mut self) -> Expr {
+    fn parse_let_binding(&mut self) -> (String, Scheme) {
+        let _left = self.remove_top();
+        let var = self.remove_top().unwrap().token;
+        let val = self.parse_expr();
+        let _right = self.remove_top();
+        return (var, val);
+    }
+
+
+    fn parse_lambda(&mut self) -> Scheme {
         let _left = self.remove_top();
         // here, I choose to change any `-` to `_` to avoid annoying GAS
         let label = self.remove_top().unwrap().token;
@@ -244,13 +272,13 @@ impl Parser {
                 let tail = self.parse_expr();
                 let _lambda_right = self.remove_top();
                 let _right = self.remove_top();
-                return Expr::Lambda(label, args, Box::new(tail));
+                return Scheme::Lambda(label, args, Box::new(tail));
             }
         } 
         panic!("Parse Lambda, unexpected eof");
     }
 
-    fn parse_funcall(&mut self) -> Expr {
+    fn parse_funcall(&mut self) -> Scheme {
         let labl = self.remove_top().unwrap();
         let mut args = vec![];
         while let Some(ref t) = self.top() {
@@ -259,84 +287,84 @@ impl Parser {
                 args.push(expr);
             } else {
                 let _right = self.remove_top();
-                return Expr::Funcall (labl.token, args);
+                return Scheme::Funcall (labl.token, args);
             }
         } 
         panic!("Parse Funcall, unexpected eof");
     }
 
-    fn parse_set(&mut self) -> Expr {
+    fn parse_set(&mut self) -> Scheme {
         let _set = self.remove_top();
         let e1 = self.parse_expr();
         let e2 = self.parse_expr();
         let _right = self.remove_top();
-        Expr::Set(Box::new(e1), Box::new(e2))
+        Scheme::Set(Box::new(e1), Box::new(e2))
     }
 
-    fn parse_prim2(&mut self) -> Expr {
+    fn parse_prim2(&mut self) -> Scheme {
         let op = self.remove_top();
         let e1 = self.parse_expr();
         let e2 = self.parse_expr();
         let _right = self.remove_top();
-        Expr::Prim2(op.unwrap().token, Box::new(e1), Box::new(e2))
+        Scheme::Prim2(op.unwrap().token, Box::new(e1), Box::new(e2))
     }
 
-    fn parse_alloc(&mut self) -> Expr {
+    fn parse_alloc(&mut self) -> Scheme {
         let _alloc = self.remove_top();
         let e = self.parse_expr();
         let _right = self.remove_top();
-        Expr::Alloc(Box::new(e))
+        Scheme::Alloc(Box::new(e))
     }
 
-    fn parse_mset(&mut self) -> Expr {
+    fn parse_mset(&mut self) -> Scheme {
         let _mset = self.remove_top();
         let base = self.parse_expr();
         let offset = self.parse_expr();
         let value = self.parse_expr();
         let _right = self.remove_top();
-        Expr::Mset(Box::new(base), Box::new(offset), Box::new(value))
+        Scheme::Mset(Box::new(base), Box::new(offset), Box::new(value))
     }
 
-    fn parse_mref(&mut self) -> Expr {
+    fn parse_mref(&mut self) -> Scheme {
         let _mref = self.remove_top();
         let base = self.parse_expr();
         let offset = self.parse_expr();
         let _right = self.remove_top();
-        Expr::Mref(Box::new(base), Box::new(offset))
+        Scheme::Mref(Box::new(base), Box::new(offset))
     }
 
-    fn parse_symbol(&mut self) -> Expr {
+    fn parse_symbol(&mut self) -> Scheme {
         let sym = self.remove_top().unwrap();
         if verify_symbol(&sym.token.as_str()) {
-            return Expr::Symbol(sym.token);
+            return Scheme::Symbol(sym.token);
         }
         panic!("Invalid Symbol {} at line {} col {}", sym.token, sym.line, sym.col);
     }
 
-    fn parse_integer(&mut self) -> Expr {
+    fn parse_integer(&mut self) -> Scheme {
         let num = self.remove_top().unwrap();
         let temp = &num.token.parse();
         match temp {
-            Ok(t) => Expr::Int64(*t),
+            Ok(t) => Scheme::Int64(*t),
             Err(e) => panic!("{} not a valid integer", num.token),
         }
     }
 
-    fn parse_bool(&mut self) -> Expr {
+    fn parse_bool(&mut self) -> Scheme {
         let s = self.remove_top().unwrap().token;
         let e = match s.as_str() {
-            "true" => Expr::Bool(true),
-            "false" => Expr::Bool(false),
+            "true" => Scheme::Bool(true),
+            "false" => Scheme::Bool(false),
             any => panic!("Invalid bool value {}", any),
         };
         let _right = self.remove_top();
         return e;
     }
 
-    fn parse_nop(&mut self) -> Expr {
+    fn parse_nop(&mut self) -> Scheme {
         let _nop = self.remove_top();
         let _right = self.remove_top();
-        return Expr::Nop;
+        return Scheme::Nop;
     }
 
     fn top(&self) -> Option<&Token> {
