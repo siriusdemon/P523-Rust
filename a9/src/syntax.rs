@@ -5,6 +5,8 @@ use std::collections::HashSet;
 pub type ConflictGraph = HashMap<String, HashSet<String>>;
 pub type Frame = HashSet<Vec<String>>;
 
+
+// ------------------------------- formatter -------------------------------------
 fn conflict_graph_formatter(form: &str, conflict_graph: &ConflictGraph, tail: &Expr) -> String {
     let mut cg = vec![];
     for (v, conflicts) in conflict_graph {
@@ -26,6 +28,8 @@ fn seqs_formatter<E: fmt::Display>(form: &str, seqs: impl Iterator<Item=E>,  joi
     format!("({} ({})\n  {})", form, seqs_s, tail)
 }
 
+
+// ---------------------- Scheme / Expr / Asm --------------------------------------
 #[derive(Debug)]
 pub enum Scheme {
     Letrec(Vec<Scheme>, Box<Scheme>),

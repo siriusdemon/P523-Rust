@@ -23,6 +23,12 @@ impl ParseScheme {
     }
 }
 
+pub struct UncoverLocals {}
+impl UncoverLocals {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        
+    }
+}
 
 
 
