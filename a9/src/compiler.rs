@@ -26,7 +26,63 @@ impl ParseScheme {
 pub struct UncoverLocals {}
 impl UncoverLocals {
     pub fn run(&self, scm: Scheme) -> Scheme {
-        scm
+        match scm {
+            Letrec (mut lambdas, box tail) => {
+                lambdas = lambdas.into_iter().map(|e| self.helper(e)).collect();
+                let body = self.helper(tail); 
+                return Letrec (lambdas, Box::new(body));
+            }
+        }
+    }
+
+    fn helper(&self, scm: Scheme) -> Scheme {
+        match scm {
+            Lambda (labl, args, box tail) => {
+                let body = self.helper(tail);
+                Lambda (labl, args, Box::new(body))
+            }
+            tail => {
+                let mut locals = HashSet::new();
+                self.tail_helper(tail, &mut locals);
+                Locals (locals, Box::new(tail))
+            }
+        }
+    }
+
+    fn tail_helper(&self, tail: Scheme, locals: &mut HashSet<String>) -> Scheme {
+        match tail {
+            Prim2 (op, box v1, box v2) => {
+
+            }
+            Alloc (box v) => {
+
+            }
+            Funcall (labl, args) => {
+
+            }
+            If (box pred, box b1, box b2) => {
+
+            }
+            Begin (args) => {
+
+            }
+            Let (bindings, box tail) => {
+
+            }
+            triv => triv,
+        }
+    }
+
+    fn effect_helper(&self, effect: Scheme, locals: &mut HashSet<String>) -> Scheme {
+        Nop => Nop
+    }
+
+    fn pred_helper(&self, pred: Scheme, locals: &mut HashSet<String>) -> Scheme {
+
+    }
+
+    fn value_helper(&self, value: Scheme, locals: &mut HashSet<String>) -> Scheme {
+
     }
 }
 
