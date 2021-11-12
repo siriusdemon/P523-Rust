@@ -1041,3 +1041,18 @@ fn compile65() {
           (+ f.6 h.8))))";
     test_helper(s, "c65.s", "394\n");
 }
+
+#[test]
+fn compile66() {
+    let s = "
+    (letrec ([add1$3 (lambda () (locals () 1))]
+             [high$4 (lambda (f.7)
+                      (locals ()
+                        (begin
+                            (f.7)
+                            (f.7))))])
+      (locals ()
+        (begin
+          (high$4 add1$3))))";
+    test_helper(s, "c66.s", "1\n");
+}
