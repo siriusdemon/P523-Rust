@@ -130,7 +130,7 @@ pub enum Expr {
     Mref(Box<Expr>, Box<Expr>),
     Mset(Box<Expr>, Box<Expr>, Box<Expr>),
     Symbol(String),
-    Funcall(String, Vec<Expr>),
+    Funcall(Box<Expr>, Vec<Expr>),
     Int64(i64),
     Bool(bool),
     Nop,
@@ -215,7 +215,7 @@ impl fmt::Display for Expr {
             Mref (box base, box offset) => write!(f, "(mref {} {})", base, offset),
             Mset (box base, box offset, box value) => write!(f, "(mset! {} {} {})", base, offset, value),
             Symbol (s) => write!(f, "{}", s),
-            Funcall (name, args) => {
+            Funcall (box name, args) => {
                 let seqs: Vec<String> = args.iter().map(|e| format!("{}", e)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
                 let seqs_s = seqs_ref.join(" ");
@@ -227,7 +227,6 @@ impl fmt::Display for Expr {
         }
     }
 }
-
 
 
 #[derive(Debug)]
