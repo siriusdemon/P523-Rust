@@ -26,11 +26,24 @@ impl ParseScheme {
 pub struct UncoverLocals {}
 impl UncoverLocals {
     pub fn run(&self, scm: Scheme) -> Scheme {
-        
+        scm
     }
 }
 
 
+pub struct RemoveLet {}
+impl RemoveLet {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        scm
+    }
+}
+
+pub struct CompileToExpr {}
+impl CompileToExpr {
+    pub fn run(&self, scm: Scheme) -> Expr {
+        Nop
+    }
+}
 
 
 // ---------------------- register/frame --------------------------------
