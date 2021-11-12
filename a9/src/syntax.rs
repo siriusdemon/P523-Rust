@@ -19,7 +19,7 @@ fn conflict_graph_formatter(form: &str, conflict_graph: &ConflictGraph, tail: &E
     format!("({} ({})\n  {})", form, seqs_s, tail)
 }
 
-fn seqs_formatter<E: std::fmt::Display>(form: &str, seqs: impl Iterator<Item=E>,  join: &str, tail: &Expr) -> String {
+fn seqs_formatter<E: fmt::Display>(form: &str, seqs: impl Iterator<Item=E>,  join: &str, tail: impl fmt::Display) -> String {
     let seqs: Vec<String> = seqs.map(|e| format!("{}", e)).collect();
     let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
     let seqs_s = seqs_ref.join(join);
