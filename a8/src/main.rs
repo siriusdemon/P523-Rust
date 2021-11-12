@@ -11,15 +11,14 @@ use compiler::compile;
 
 fn main() -> std::io::Result<()> {
     let s = "
-    (letrec ()
-      (locals (a.1 x.2)
+    (letrec ([add1$3 (lambda () (locals () 1))]
+             [high$4 (lambda (f.7)
+                      (locals ()
+                        (begin
+                            (f.7)
+                            (f.7))))])
+      (locals ()
         (begin
-          (set! x.2 (alloc 16))
-          (mset! x.2 8 3)
-          (mref (begin (if (< 10 64)
-                           (set! a.1 x.2)
-                           (set! a.1 x.2))
-                       a.1)
-                (begin (set! a.1 8) a.1)))))";
+          (high$4 add1$3))))";
     compile(s, "t.s")
 }

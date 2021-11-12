@@ -137,6 +137,10 @@ fn make_alloc(e: Expr) -> Expr {
         "+".to_string(), Symbol (ALLOCATION_REGISTER.to_string()), e)
 }
 
+// I decide to add (value value*) in A8. Just before we dive into Scheme
+fn make_funcall(labl: String, args: Vec<Expr>) -> Expr {
+    Funcall(Box::new(Symbol (labl)), args)
+}
 
 pub struct ParseExpr {}
 impl ParseExpr {
@@ -186,10 +190,11 @@ impl RemoveComplexOpera {
                 exprs.push(prim2);
                 return Begin (exprs);
             }
-            Funcall (labl, mut args) => {
+            Funcall (box mut func, mut args) => {
                 let mut exprs = vec![];
+                func = self.reduce_value(func, locals, &mut exprs);
                 args = args.into_iter().map(|e| self.reduce_value(e, locals, &mut exprs)).collect();
-                let funcall = Funcall (labl, args);
+                let funcall = Funcall (Box::new(func), args);
                 if exprs.len() == 0 { return funcall; }
                 exprs.push(funcall);
                 return Begin (exprs);
@@ -320,10 +325,11 @@ impl RemoveComplexOpera {
                 exprs = exprs.into_iter().map(|e| self.effect_helper(e, locals)).collect();
                 return Begin (exprs);
             }
-            Funcall (labl, mut args) => {
+            Funcall (box mut func, mut args) => {
                 let mut exprs = vec![];
+                func = self.reduce_value(func, locals, &mut exprs);
                 args = args.into_iter().map(|e| self.reduce_value(e, locals, &mut exprs)).collect();
-                let funcall = Funcall (labl, args);
+                let funcall = Funcall (Box::new(func), args);
                 if exprs.len() == 0 { return funcall; }
                 exprs.push(funcall);
                 return Begin (exprs);
@@ -383,9 +389,10 @@ impl RemoveComplexOpera {
                 locals.insert(new_uvar.clone());
                 return Symbol (new_uvar);
             }
-            Funcall (labl, mut args) => {
+            Funcall (box mut func, mut args) => {
+                func = self.reduce_value(func, locals, prelude);
                 args = args.into_iter().map(|e| self.reduce_value(e, locals, prelude)).collect();
-                let funcall = Funcall (labl, args);
+                let funcall = Funcall (Box::new(func), args);
                 let new_uvar = gen_uvar();
                 let assign = set1(Symbol (new_uvar.clone()), funcall);
                 prelude.push(assign);
@@ -631,7 +638,7 @@ impl ImposeCallingConvention {
                     Symbol (RETURN_VALUE_REGISTER.to_string()),
                     Symbol (ALLOCATION_REGISTER.to_string()),
                 ];
-                let jump = Funcall (get_rp(rp), args);
+                let jump = Funcall (Box::new(Symbol (get_rp(rp))), args);
                 return Begin (vec![expr, jump]);
             }
             Alloc (box e) => {
@@ -645,7 +652,7 @@ impl ImposeCallingConvention {
                     Symbol (RETURN_VALUE_REGISTER.to_string()),
                     Symbol (ALLOCATION_REGISTER.to_string()),
                 ];
-                let jump = Funcall (get_rp(rp), args);
+                let jump = Funcall (Box::new(Symbol (get_rp(rp))), args);
                 exprs.push(jump);
                 return Begin (exprs);
             }
@@ -656,7 +663,7 @@ impl ImposeCallingConvention {
                     Symbol (RETURN_VALUE_REGISTER.to_string()),
                     Symbol (ALLOCATION_REGISTER.to_string()),
                 ];
-                let jump = Funcall (get_rp(rp), args);
+                let jump = Funcall (Box::new(Symbol (get_rp(rp))), args);
                 return Begin (vec![expr, jump]);
             }
         }
@@ -693,7 +700,7 @@ impl ImposeCallingConvention {
                 exprs = exprs.into_iter().map(|e| self.effect_helper(e, new_frame)).collect();
                 return Begin (exprs);
             }
-            Funcall (labl, mut args) => {
+            Funcall (box Symbol (labl), mut args) => {
                 let rp_label = get_rp_nontail(&labl);
                 let mut exprs = vec![];
                 let mut fv_assign = vec![];
@@ -718,7 +725,7 @@ impl ImposeCallingConvention {
                     exprs.push(set1(Symbol (reg.to_string()), val));
                 }
                 exprs.push(set1(Symbol (RETRUN_ADDRESS_REGISTER.to_string()), Symbol (rp_label.clone())));
-                let new_call = Funcall (labl, liveset);
+                let new_call = Funcall (Box::new(Symbol (labl)), liveset);
                 exprs.push(new_call);
                 ReturnPoint (rp_label, Box::new(Begin (exprs)))
             }
@@ -739,7 +746,7 @@ pub trait UncoverConflict {
     fn tail_liveset(&self, tail: &Expr, mut liveset: HashSet<String>, conflict_graph: &mut ConflictGraph, 
                                           call_live: &mut HashSet<String>) -> HashSet<String> {
         match tail {
-            Funcall (labl, args) => {
+            Funcall (box Symbol (labl), args) => {
                 for a in args {
                     if let Symbol(s) = a { 
                         if self.type_verify(s) {
@@ -1691,11 +1698,11 @@ impl FinalizeFrameLocations {
                 let new_e2 = self.finalize_frame_locations(bindings, e2);
                 return Prim2 (op, Box::new(new_e1), Box::new(new_e2));
             },
-            Funcall (name, mut args) => {
+            Funcall (box Symbol (name), mut args) => {
                 args = args.into_iter().map(|e| self.finalize_frame_locations(bindings, e)).collect();
                 match bindings.get(&name) {
-                    None => Funcall (name, args),
-                    Some (loc) => Funcall (loc.to_string(), args),
+                    None => Funcall (Box::new(Symbol (name)), args),
+                    Some (loc) => Funcall (Box::new(Symbol (loc.to_string())), args),
                 }
             },
             Symbol (s) => {
@@ -1847,10 +1854,10 @@ impl FinalizeLocations {
                 let new_e2 = self.replace_uvar(bindings, e2);
                 return Prim2 (op, Box::new(new_e1), Box::new(new_e2));
             },
-            Funcall (name, args) => {
+            Funcall (box Symbol (name), args) => {
                 match bindings.get(&name) {
-                    None => Funcall (name, args),
-                    Some (loc) => Funcall (loc.to_string(), args),
+                    None => Funcall (Box::new(Symbol (name)), args),
+                    Some (loc) => Funcall (Box::new(Symbol (loc.to_string())), args),
                 }
             },
             ReturnPoint (labl, box e) => ReturnPoint (labl, Box::new(self.replace_uvar(bindings, e))),
@@ -1909,9 +1916,9 @@ impl UpdateFrameLocations {
                 assert_eq!(offset_b1, offset_b2);
                 return (if2(new_pred, new_b1, new_b2), offset_b1)
             }
-            Funcall (mut labl, args) => {
+            Funcall (box Symbol (mut labl), args) => {
                 if is_fv(&labl) { labl = self.update_location(&labl, offset); }     
-                return (Funcall (labl, args), offset);
+                return (Funcall (Box::new(Symbol (labl)), args), offset);
             }
             any => panic!("Invalid tail {}", any)
         }
@@ -2066,8 +2073,8 @@ impl ExposeBasicBlocks {
                 }
                 return pred;
             }
-            Bool (true) => Funcall (lab1.to_string(), vec![]),
-            Bool (false) => Funcall (lab2.to_string(), vec![]),
+            Bool (true) => make_funcall(lab1.to_string(), vec![]),
+            Bool (false) => make_funcall(lab2.to_string(), vec![]),
             If (box pred, box br1, box br2) => {
                 let new_lab1 = self.gensym();
                 let new_br1 = self.pred_helper(br1, lab1, lab2, new_lambdas);
@@ -2079,7 +2086,7 @@ impl ExposeBasicBlocks {
                 
                 return self.pred_helper(pred, &new_lab1, &new_lab2, new_lambdas);
             }
-            relop => If (Box::new(relop), Box::new(Funcall(lab1.to_string(), vec![])), Box::new( Funcall(lab2.to_string(), vec![]))),
+            relop => if2(relop, make_funcall(lab1.to_string(), vec![]), make_funcall(lab2.to_string(), vec![])),
         }
     }
 
@@ -2099,11 +2106,11 @@ impl ExposeBasicBlocks {
                 self.add_binding(&lab_tail, tail, new_lambdas);
                 // first branch, jump to the join block
                 let lab1 = self.gensym();
-                let new_b1 = self.effect_helper(b1, Funcall (lab_tail.clone(), vec![]), new_lambdas);
+                let new_b1 = self.effect_helper(b1, make_funcall(lab_tail.clone(), vec![]), new_lambdas);
                 self.add_binding(&lab1, new_b1, new_lambdas);
                 // second branch, jump to the join block too
                 let lab2 = self.gensym();
-                let new_b2 = self.effect_helper(b2, Funcall (lab_tail, vec![]), new_lambdas);
+                let new_b2 = self.effect_helper(b2, make_funcall(lab_tail, vec![]), new_lambdas);
                 self.add_binding(&lab2, new_b2, new_lambdas);
                 // since a single expr seq break into several blocks, an effect turn into a tail.
                 return self.pred_helper(pred, &lab1, &lab2, new_lambdas);
@@ -2162,14 +2169,14 @@ impl OptimizeJump {
                     let new_exprs: Vec<Expr>= exprs.into_iter().map(|e| self.reduce(e, next)).collect();
                     return Begin (new_exprs);
                 }
-                If (relop, box Funcall (lab1, _), lab2) if &lab1 == next_lab => {
+                If (relop, box Funcall (box Symbol (lab1), _), lab2) if &lab1 == next_lab => {
                     let not_relop = Prim1 ("not".to_string(), relop);
                     return If1 (Box::new(not_relop), lab2);
                 }
-                If (relop, lab1, box Funcall (lab2, _)) if &lab2 == next_lab => {
+                If (relop, lab1, box Funcall (box Symbol (lab2), _)) if &lab2 == next_lab => {
                     return If1 (relop, lab1);
                 }
-                Funcall (lab, _) if &lab == next_lab => {
+                Funcall (box Symbol (lab), _) if &lab == next_lab => {
                     return Nop;
                 }
                 e => { return self.reduce_if2(e); }
@@ -2366,26 +2373,26 @@ impl CompileToAsm {
                     other => self.op2("movq", src, dst),
                 }
             }
-            Funcall (s, _) if is_fv(&s) => {
+            Funcall (box Symbol (s), _) if is_fv(&s) => {
                 let deref = self.fv_to_deref(&s);
                 return Jmp (Box::new(deref));
             },
-            Funcall (s, _) if is_reg(&s) => {
+            Funcall (box Symbol (s), _) if is_reg(&s) => {
                 let reg = self.string_to_reg(&s);
                 return Jmp (Box::new(reg));
             },
-            Funcall (s, _) => {
+            Funcall (box Symbol (s), _) => {
                 let label = Label (s);
                 return Jmp (Box::new(label));
             }
-            If1 (box Prim1(op, box Prim2(relop, box v1, box v2)), box Funcall (s, _)) if op.as_str() == "not" => {
+            If1 (box Prim1(op, box Prim2(relop, box v1, box v2)), box Funcall (box Symbol (s), _)) if op.as_str() == "not" => {
                 let v1 = self.expr_to_asm_helper(v1);
                 let v2 = self.expr_to_asm_helper(v2);
                 let cond = self.op2("cmpq", v2, v1);
                 let jmp = Jmpif (self.relop_to_cc(&relop, true).to_string(), Box::new(Label (s)));
                 return Code (vec![cond, jmp]);
             }
-            If1 (box Prim2(relop, box v1, box v2), box Funcall (s, _)) => {
+            If1 (box Prim2(relop, box v1, box v2), box Funcall (box Symbol (s), _)) => {
                 let v1 = self.expr_to_asm_helper(v1);
                 let v2 = self.expr_to_asm_helper(v2);
                 let cond = self.op2("cmpq", v2, v1);

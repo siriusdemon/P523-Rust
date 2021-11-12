@@ -424,9 +424,7 @@ fn compile15() {
     test_helper(s, "c15.s", 5);
 }
 
-// func still not a value
 #[test]
-#[should_panic()]
 fn compile16() {
     let s = "
     (letrec ([thunk-num$0 (lambda (n.1)
@@ -602,7 +600,6 @@ fn compile20() {
 }
 
 #[test]
-#[should_panic()]
 fn compile21() {
     let s = "
        (letrec ([stack-new$0 (lambda (size.1)
@@ -671,7 +668,7 @@ fn compile21() {
                   (set! x.1002 (+ ((invoke$1 s2.11 2) s2.11) ((invoke$1 s2.11 2) s2.11)))
                   (- (+ ((invoke$1 s2.11 1) s2.11) ((invoke$1 s2.11 1) s2.11)) x.1002)))
              x.1000))))";
-    test_helper(s, "c21.s", 1);
+    test_helper(s, "c21.s", 0);
 }
 
 #[test]
