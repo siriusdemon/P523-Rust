@@ -124,7 +124,7 @@ impl Parser {
     // at the very top level, only list and atom allowed
     pub fn parse_expr(&mut self) -> Scheme {
         if let Some(ref t) = self.top() {
-            if t.token.as_str() == "(" {
+            if t.token.as_str() == "(" || t.token.as_str() == "[" {
                 return self.parse_list();
             }
             return self.parse_atom();
@@ -160,7 +160,7 @@ impl Parser {
                 => self.parse_prim2(),
             "true" | "false" => self.parse_bool(),
             "nop" => self.parse_nop(),
-            sym => self.parse_funcall(),
+            s_expr => self.parse_funcall(),
         }
     }
 
@@ -279,7 +279,7 @@ impl Parser {
     }
 
     fn parse_funcall(&mut self) -> Scheme {
-        let labl = self.remove_top().unwrap();
+        let func = self.parse_expr();
         let mut args = vec![];
         while let Some(ref t) = self.top() {
             if t.token.as_str() != ")" {
@@ -287,7 +287,7 @@ impl Parser {
                 args.push(expr);
             } else {
                 let _right = self.remove_top();
-                return Scheme::Funcall (labl.token, args);
+                return Scheme::Funcall (Box::new(func), args);
             }
         } 
         panic!("Parse Funcall, unexpected eof");

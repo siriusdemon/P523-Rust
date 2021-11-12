@@ -45,7 +45,7 @@ pub enum Scheme {
     Mref(Box<Scheme>, Box<Scheme>),
     Mset(Box<Scheme>, Box<Scheme>, Box<Scheme>),
     Symbol(String),
-    Funcall(String, Vec<Scheme>),
+    Funcall(Box<Scheme>, Vec<Scheme>),
     Int64(i64),
     Bool(bool),
     Nop,
@@ -92,7 +92,7 @@ impl fmt::Display for Scheme {
             Mref (box base, box offset) => write!(f, "(mref {} {})", base, offset),
             Mset (box base, box offset, box value) => write!(f, "(mset! {} {} {})", base, offset, value),
             Symbol (s) => write!(f, "{}", s),
-            Funcall (name, args) => {
+            Funcall (box name, args) => {
                 let seqs: Vec<String> = args.iter().map(|e| format!("{}", e)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
                 let seqs_s = seqs_ref.join(" ");

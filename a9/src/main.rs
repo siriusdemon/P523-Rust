@@ -11,8 +11,11 @@ use compiler::compile;
 
 fn main() -> std::io::Result<()> {
     let s = "
-    (letrec ()
-      (let ([c.1 10] [a.2 5])
-        (if (< a.2 c.1) a.2 c.1)))";
+    (letrec ([f$0 (lambda (p.2) (- (mref p.2 8) (mref p.2 0)))])
+      (let ([x.1 (alloc 16)])
+        (begin
+          (mset! x.1 0 73)
+          (mset! x.1 8 35)
+          (f$0 x.1))))";
     compile(s, "t.s")
 }
