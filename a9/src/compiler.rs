@@ -12,6 +12,23 @@ use Expr::*;
 use Asm::*;
 
 
+fn prim2_scm(op: String, v1: Scheme, v2: Scheme) -> Scheme {
+    Scheme::Prim2 (op, Box::new(v1), Box::new(v2))
+}
+
+fn if2_scm(pred: Scheme, b1: Scheme, b2: Scheme) -> Scheme {
+    Scheme::If (Box::new(pred), Box::new(b1), Box::new(b2))
+}
+
+fn set1_scm(sym: Scheme, val: Scheme) -> Scheme {
+    Scheme::Set (Box::new(sym), Box::new(val))
+}
+
+fn mset_scm(v1: Scheme, v2: Scheme, v3: Scheme) -> Scheme {
+    Scheme::Mset (Box::new(v1), Box::new(v2), Box::new(v3))
+}
+
+
 pub struct ParseScheme {}
 impl ParseScheme {
     pub fn run(&self, scm: &str) -> Scheme {
@@ -184,8 +201,181 @@ impl UncoverLocals {
 pub struct RemoveLet {}
 impl RemoveLet {
     pub fn run(&self, scm: Scheme) -> Scheme {
-        scm
+        use Scheme::*;
+        match scm {
+            Letrec (mut lambdas, box mut body) => {
+                lambdas = lambdas.into_iter().map(|e| self.helper(e)).collect();
+                body = self.helper(body);
+                return Letrec (lambdas, Box::new(body));
+            }
+            e => panic!("Invalid Program {}", e),
+        }
     }
+
+    fn helper(&self, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        match scm {
+            Lambda (labl, args, box mut body) => {
+                body = self.helper(body);
+                Lambda (labl, args, Box::new(body))
+            }
+            Locals (locals, box mut tail) => {
+                tail = self.tail_helper(tail);
+                Locals (locals, Box::new(tail))
+            }
+            e => panic!("Invalid Program {}", e),
+        }
+    }
+
+    fn tail_helper(&self, tail: Scheme) -> Scheme {
+        use Scheme::*;
+        match tail {
+            Prim2 (op, box v1, box v2) => {
+                let new_v1 = self.value_helper(v1);
+                let new_v2 = self.value_helper(v2);
+                return prim2_scm(op, new_v1, new_v2);
+            }
+            Alloc (box value) => Alloc (Box::new(self.value_helper(value))),
+            Funcall (box v, mut args) => {
+                let new_v = self.value_helper(v);
+                args = args.into_iter().map(|a| self.value_helper(a)).collect();
+                return Funcall (Box::new(new_v), args);
+            }
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred);
+                let new_b1 = self.tail_helper(b1);
+                let new_b2 = self.tail_helper(b2);
+                return if2_scm(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                let mut tail = exprs.pop().unwrap();
+                tail = self.tail_helper(tail);
+                exprs = exprs.into_iter().map(|x| self.effect_helper(x)).collect();
+                exprs.push(tail);
+                return Begin (exprs);
+            }
+            Let (mut bindings, box mut tail) => {
+                let mut exprs = vec![];
+                for (s, val) in bindings.drain() {
+                    exprs.push( set1_scm(Symbol (s), val) );
+                }
+                tail = self.tail_helper(tail);
+                exprs.push(tail);
+                return Begin (exprs);
+            }
+            triv => triv,
+        }
+    }
+
+    fn pred_helper(&self, pred: Scheme) -> Scheme {
+        use Scheme::*;
+        match pred {
+            Prim2 (relop, box v1, box v2) => {
+                let new_v1 = self.value_helper(v1);
+                let new_v2 = self.value_helper(v2);
+                return prim2_scm(relop, new_v1, new_v2);
+            }
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred);
+                let new_b1 = self.pred_helper(b1);
+                let new_b2 = self.pred_helper(b2);
+                return if2_scm(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                let mut pred = exprs.pop().unwrap();
+                pred = self.pred_helper(pred);
+                exprs = exprs.into_iter().map(|x| self.effect_helper(x)).collect();
+                exprs.push(pred);
+                return Begin (exprs);
+            }
+            Let (mut bindings, box mut pred) => {
+                let mut exprs = vec![];
+                for (s, val) in bindings.drain() {
+                    exprs.push( set1_scm(Symbol (s), val) );
+                }
+                pred = self.pred_helper(pred);
+                exprs.push(pred);
+                return Begin (exprs);
+            }
+            e => e,
+        }
+    }
+
+    fn effect_helper(&self, effect: Scheme) -> Scheme {
+        use Scheme::*;
+        match effect {
+            Nop => Nop,
+            Mset (box v1, box v2, box v3) => {
+                let new_v1 = self.value_helper(v1);
+                let new_v2 = self.value_helper(v2);
+                let new_v3 = self.value_helper(v3);
+                return mset_scm(new_v1, new_v2, new_v3);
+            }
+            Funcall (box v, mut args) => {
+                let new_v = self.value_helper(v);
+                args = args.into_iter().map(|x| self.value_helper(x)).collect();
+                return Funcall (Box::new(new_v), args);
+            }
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred);
+                let new_b1 = self.effect_helper(b1);
+                let new_b2 = self.effect_helper(b2);
+                return if2_scm(new_pred, new_b1, new_b2); 
+            }
+            Begin (mut exprs) => {
+                exprs = exprs.into_iter().map(|x| self.value_helper(x)).collect();
+                return Begin (exprs);
+            }
+            Let (mut bindings, box mut effect) => {
+                let mut exprs = vec![];
+                for (s, val) in bindings.drain() {
+                    exprs.push( set1_scm(Symbol (s), val) );
+                }
+                effect = self.effect_helper(effect);
+                exprs.push(effect);
+                return Begin (exprs);
+            }
+            e => panic!("Invalid effect expression {}", e),
+        }
+    }
+
+    fn value_helper(&self, value: Scheme) -> Scheme {
+        use Scheme::*;
+        match value {
+            Prim2 (op, box v1, box v2) => {
+                let new_v1 = self.value_helper(v1);
+                let new_v2 = self.value_helper(v2);
+                return prim2_scm(op, new_v1, new_v2);
+            }
+            Alloc (box v) => Alloc (Box::new(self.value_helper(v))),
+            Funcall (box v, mut args) => {
+                let new_v = self.value_helper(v);
+                args = args.into_iter().map(|x| self.value_helper(x)).collect();
+                return Funcall (Box::new(new_v), args);
+            }
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.value_helper(pred);
+                let new_b1 = self.value_helper(b1);
+                let new_b2 = self.value_helper(b2);
+                return if2_scm(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                exprs = exprs.into_iter().map(|x| self.value_helper(x)).collect();
+                return Begin (exprs);
+            }
+            Let (mut bindings, box mut v) => {
+                let mut exprs = vec![];
+                for (s, val) in bindings.drain() {
+                    exprs.push( set1_scm(Symbol (s), val) );
+                }
+                v = self.value_helper(v);
+                exprs.push( v );
+                return Begin (exprs);
+            }
+            triv => triv,
+        }
+    }
+
 }
 
 pub struct CompileToExpr {}
@@ -2635,6 +2825,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("ParseScheme", &expr);
     let expr = UncoverLocals{}.run(expr);
     compile_formatter("UncoverLocals", &expr);
+    let expr = RemoveLet{}.run(expr);
+    compile_formatter("RemoveLet", &expr);
     // let expr = RemoveComplexOpera{}.run(expr);
     // compile_formatter("RemoveComplexOpera", &expr);
     // let expr = FlattenSet{}.run(expr);
