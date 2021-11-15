@@ -53,15 +53,130 @@ impl UncoverLocals {
     }
 
     fn tail_helper(&self, tail: &Scheme, locals: &mut HashSet<String>) {
+        use Scheme::*;
+        match tail {
+            Prim2 (op, box v1, box v2) => {
+                self.value_helper(v1, locals);
+                self.value_helper(v2, locals);
+            }
+            Alloc (box value) => self.value_helper(value, locals),
+            Funcall (box v, args) => {
+                self.value_helper(v, locals);
+                args.iter().for_each(|a| self.value_helper(a, locals));
+            }
+            If (box pred, box b1, box b2) => {
+                self.pred_helper(pred, locals);
+                self.tail_helper(b1, locals);
+                self.tail_helper(b2, locals);
+            }
+            Begin (exprs) => {
+                let exprs_slice = exprs.as_slice();
+                let last = exprs.len() - 1;
+                for i in 0..last {
+                    self.effect_helper(&exprs_slice[i], locals);
+                }
+                self.tail_helper(&exprs_slice[last], locals);
+            }
+            Let (bindings, box tail) => {
+                for v in bindings.keys() {
+                    locals.insert(v.to_string());
+                }
+                self.tail_helper(tail, locals);
+            }
+            triv => (),
+        }
     }
 
     fn effect_helper(&self, effect: &Scheme, locals: &mut HashSet<String>) {
+        use Scheme::*;
+        match effect {
+            Nop => (), 
+            Mset (box v1, box v2, box v3) => {
+                self.value_helper(v1, locals); 
+                self.value_helper(v2, locals);
+                self.value_helper(v3, locals);
+            }
+            Funcall (box v, args) => {
+                self.value_helper(v, locals);
+                args.iter().for_each(|x| self.value_helper(x, locals));
+            }
+            If (box pred, box b1, box b2) => {
+                self.pred_helper(pred, locals);
+                self.effect_helper(b1, locals);
+                self.effect_helper(b2, locals);
+            }
+            Begin (exprs) => {
+                exprs.iter().for_each(|x| self.value_helper(x, locals));
+            }
+            Let (bindings, box effect) => {
+                for v in bindings.keys() {
+                    locals.insert(v.to_string());
+                }
+                self.effect_helper(effect, locals);
+            }
+            e => panic!("Invalid effect expression {}", e),
+        }
     }
 
     fn pred_helper(&self, pred: &Scheme, locals: &mut HashSet<String>) {
+        use Scheme::*;
+        match pred {
+            Bool (b) => (),
+            Prim2 (relop, box v1, box v2) => {
+                self.value_helper(v1, locals);
+                self.value_helper(v2, locals);
+            }
+            If (box pred, box b1, box b2) => {
+                self.pred_helper(pred, locals);
+                self.pred_helper(b1, locals);
+                self.pred_helper(b2, locals);
+            }
+            Begin (exprs) => {
+                let exprs_slice = exprs.as_slice();
+                let last = exprs.len() - 1;
+                for i in 0..last {
+                    self.effect_helper(&exprs_slice[i], locals);
+                }
+                self.pred_helper(&exprs_slice[last], locals);
+            }
+            Let (bindings, box pred) => {
+                for v in bindings.keys() {
+                    locals.insert(v.to_string());
+                }
+                self.pred_helper(pred, locals);
+            }
+            e => panic!("Invalid pred expression {}", e),
+        }
     }
 
     fn value_helper(&self, value: &Scheme, locals: &mut HashSet<String>) {
+        use Scheme::*;
+        match value {
+            Prim2 (op, box v1, box v2) => {
+                self.value_helper(v1, locals);
+                self.value_helper(v2, locals);
+            }
+            Alloc (box v) => self.value_helper(v, locals),
+            Funcall (box v, args) => {
+                self.value_helper(v, locals);
+                args.iter().for_each(|x| self.value_helper(x, locals));
+            }
+            If (box pred, box b1, box b2) => {
+                self.value_helper(pred, locals);
+                self.value_helper(b1, locals);
+                self.value_helper(b2, locals);
+            }
+            Begin (exprs) => {
+                exprs.iter().for_each(|x| self.value_helper(x, locals));
+            }
+            Let (bindings, box v) => {
+                for v in bindings.keys() {
+                    locals.insert(v.to_string());
+                }
+                self.value_helper(v, locals);
+            }
+            triv => (),
+        }
     }
 }
 
@@ -2518,6 +2633,8 @@ pub fn everybody_home(expr: &Expr) -> bool {
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseScheme{}.run(s);
     compile_formatter("ParseScheme", &expr);
+    let expr = UncoverLocals{}.run(expr);
+    compile_formatter("UncoverLocals", &expr);
     // let expr = RemoveComplexOpera{}.run(expr);
     // compile_formatter("RemoveComplexOpera", &expr);
     // let expr = FlattenSet{}.run(expr);
