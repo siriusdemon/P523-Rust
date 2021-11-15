@@ -94,6 +94,10 @@ impl UncoverLocals {
                 }
                 self.tail_helper(&exprs_slice[last], locals);
             }
+            Mref (box v1, box v2) => {
+                self.value_helper(v1, locals);
+                self.value_helper(v2, locals);
+            }
             Let (bindings, box tail) => {
                 for v in bindings.keys() {
                     locals.insert(v.to_string());
@@ -173,6 +177,10 @@ impl UncoverLocals {
                 self.value_helper(v1, locals);
                 self.value_helper(v2, locals);
             }
+            Mref (box v1, box v2) => {
+                self.value_helper(v1, locals);
+                self.value_helper(v2, locals);
+            }
             Alloc (box v) => self.value_helper(v, locals),
             Funcall (box v, args) => {
                 self.value_helper(v, locals);
@@ -234,6 +242,11 @@ impl RemoveLet {
                 let new_v1 = self.value_helper(v1);
                 let new_v2 = self.value_helper(v2);
                 return prim2_scm(op, new_v1, new_v2);
+            }
+            Mref (box v1, box v2) => {
+                let new_v1 = self.value_helper(v1);
+                let new_v2 = self.value_helper(v2);
+                return Mref (Box::new(new_v1), Box::new(new_v2));
             }
             Alloc (box value) => Alloc (Box::new(self.value_helper(value))),
             Funcall (box v, mut args) => {
@@ -347,6 +360,11 @@ impl RemoveLet {
                 let new_v2 = self.value_helper(v2);
                 return prim2_scm(op, new_v1, new_v2);
             }
+            Mref (box base, box offset) => {
+                let new_base = self.value_helper(base);
+                let new_offset = self.value_helper(offset);
+                return Mref (Box::new(new_base), Box::new(new_offset));
+            }
             Alloc (box v) => Alloc (Box::new(self.value_helper(v))),
             Funcall (box v, mut args) => {
                 let new_v = self.value_helper(v);
@@ -378,10 +396,167 @@ impl RemoveLet {
 
 }
 
+// This pass serve as a bridge from Scheme to Expr
+// It is just a identical mapping.
 pub struct CompileToExpr {}
 impl CompileToExpr {
     pub fn run(&self, scm: Scheme) -> Expr {
-        Nop
+        match scm {
+            Scheme::Letrec (mut lambdas, box mut body) => {
+                let new_lambdas: Vec<_> = lambdas.into_iter().map(|e| self.helper(e)).collect();
+                let new_body = self.helper(body);
+                Expr::Letrec (new_lambdas, Box::new(new_body))
+            }
+            e => panic!("Invalid Program {}", e)
+        }
+    }
+
+    fn helper(&self, scm: Scheme) -> Expr {
+        match scm {
+            Scheme::Lambda (labl, args, box body) => {
+                let new_body = self.helper(body);
+                Lambda (labl, args, Box::new(new_body))
+            }
+            Scheme::Locals (locals, box tail) => {
+                let new_tail = self.tail_helper(tail);
+                Locals (locals, Box::new(new_tail))
+            }
+            e => panic!("Invalid Program {}", e),
+        }
+    }
+
+    fn tail_helper(&self, tail: Scheme) -> Expr {
+        match tail {
+            Scheme::Prim2 (op, box v1, box v2) => {
+                let new_v1 = self.value_helper(v1);
+                let new_v2 = self.value_helper(v2);
+                return Prim2 (op, Box::new(new_v1), Box::new(new_v2));
+            }
+            Scheme::Mref (box v1, box v2) => {
+                let new_v1 = self.value_helper(v1);
+                let new_v2 = self.value_helper(v2);
+                return Mref (Box::new(new_v1), Box::new(new_v2));
+            }
+            Scheme::Alloc (box value) => Alloc (Box::new(self.value_helper(value))),
+            Scheme::Funcall (box v, args) => {
+                let new_v = self.value_helper(v);
+                let new_args: Vec<_> = args.into_iter().map(|a| self.value_helper(a)).collect();
+                return Funcall (Box::new(new_v), new_args);
+            }
+            Scheme::If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred);
+                let new_b1 = self.tail_helper(b1);
+                let new_b2 = self.tail_helper(b2);
+                return if2(new_pred, new_b1, new_b2);
+            }
+            Scheme::Begin (mut exprs) => {
+                let tail = exprs.pop().unwrap();
+                let new_tail = self.tail_helper(tail);
+                let mut new_exprs: Vec<_> = exprs.into_iter().map(|x| self.effect_helper(x)).collect();
+                new_exprs.push(new_tail);
+                return Begin (new_exprs);
+            }
+            triv => self.scheme_to_expr(triv),
+        }
+    }
+    
+    fn pred_helper(&self, pred: Scheme) -> Expr {
+        match pred {
+            Scheme::Prim2 (relop, box v1, box v2) => {
+                let new_v1 = self.value_helper(v1);
+                let new_v2 = self.value_helper(v2);
+                return Prim2 (relop, Box::new(new_v1), Box::new(new_v2));
+            }
+            Scheme::If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred);
+                let new_b1 = self.pred_helper(b1);
+                let new_b2 = self.pred_helper(b2);
+                return if2(new_pred, new_b1, new_b2);
+            }
+            Scheme::Begin (mut exprs) => {
+                let pred = exprs.pop().unwrap();
+                let new_pred = self.pred_helper(pred);
+                let mut new_exprs: Vec<_> = exprs.into_iter().map(|x| self.effect_helper(x)).collect();
+                new_exprs.push(new_pred);
+                return Begin (new_exprs);
+            }
+            e => self.scheme_to_expr(e),
+        }
+    }
+    
+
+    fn effect_helper(&self, effect: Scheme) -> Expr {
+        match effect {
+            Scheme::Nop => Nop,
+            Scheme::Mset (box v1, box v2, box v3) => {
+                let new_v1 = self.value_helper(v1);
+                let new_v2 = self.value_helper(v2);
+                let new_v3 = self.value_helper(v3);
+                return Mset (Box::new(new_v1), Box::new(new_v2), Box::new(new_v3));
+            }
+            Scheme::Funcall (box v, args) => {
+                let new_v = self.value_helper(v);
+                let new_args: Vec<_> = args.into_iter().map(|x| self.value_helper(x)).collect();
+                return Funcall (Box::new(new_v), new_args);
+            }
+            Scheme::If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred);
+                let new_b1 = self.effect_helper(b1);
+                let new_b2 = self.effect_helper(b2);
+                return if2(new_pred, new_b1, new_b2); 
+            }
+            Scheme::Begin (exprs) => {
+                let new_exprs: Vec<_> = exprs.into_iter().map(|x| self.value_helper(x)).collect();
+                return Begin (new_exprs);
+            }
+            Scheme::Set (box sym, box val) => {
+                let new_sym = self.scheme_to_expr(sym);
+                let new_val = self.value_helper(val);
+                return set1(new_sym, new_val);
+            }
+            e => panic!("Invalid effect expression {}", e),
+        }
+    }
+
+    fn value_helper(&self, value: Scheme) -> Expr {
+        match value {
+            Scheme::Prim2 (op, box v1, box v2) => {
+                let new_v1 = self.value_helper(v1);
+                let new_v2 = self.value_helper(v2);
+                return Prim2 (op, Box::new(new_v1), Box::new(new_v2));
+            }
+            Scheme::Mref (box v1, box v2) => {
+                let new_v1 = self.value_helper(v1);
+                let new_v2 = self.value_helper(v2);
+                return Mref (Box::new(new_v1), Box::new(new_v2));
+            }
+            Scheme::Alloc (box v) => Alloc (Box::new(self.value_helper(v))),
+            Scheme::Funcall (box v, args) => {
+                let new_v = self.value_helper(v);
+                let new_args: Vec<_> = args.into_iter().map(|x| self.value_helper(x)).collect();
+                return Funcall (Box::new(new_v), new_args);
+            }
+            Scheme::If (box pred, box b1, box b2) => {
+                let new_pred = self.value_helper(pred);
+                let new_b1 = self.value_helper(b1);
+                let new_b2 = self.value_helper(b2);
+                return if2(new_pred, new_b1, new_b2);
+            }
+            Scheme::Begin (exprs) => {
+                let new_exprs: Vec<_> = exprs.into_iter().map(|x| self.value_helper(x)).collect();
+                return Begin (new_exprs);
+            }
+            triv => self.scheme_to_expr(triv),
+        }
+    }
+    
+    fn scheme_to_expr(&self, scm: Scheme) -> Expr {
+        match scm {
+            Scheme::Bool (b) => Bool (b), 
+            Scheme::Int64 (i) => Int64 (i), 
+            Scheme::Symbol (s) => Symbol (s),
+            c => panic!("Unexpect complex scheme {}", c),
+        }
     }
 }
 
@@ -2827,6 +3002,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("UncoverLocals", &expr);
     let expr = RemoveLet{}.run(expr);
     compile_formatter("RemoveLet", &expr);
+    let expr = CompileToExpr{}.run(expr);
+    compile_formatter("CompileToExpr", &expr);
     // let expr = RemoveComplexOpera{}.run(expr);
     // compile_formatter("RemoveComplexOpera", &expr);
     // let expr = FlattenSet{}.run(expr);
