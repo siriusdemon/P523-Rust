@@ -21,27 +21,27 @@ use Asm::*;
 const MASK_FIXNUM  :usize = 0b111;
 const FIXNUM_BITS  :usize = 61;
 const SHIFT_FIXNUM :usize = 3;
-const TAG_FIXNUM   :usize = 0b000;
+const TAG_FIXNUM   :i64 = 0b000;
 
 const MASK_PAIR  :usize = 0b111;
-const TAG_PAIR   :usize = 0b001;
-const SIZE_PAIR  :usize = 16;
-const CAR_OFFSET :usize = 0;
-const CDR_OFFSET :usize = 8;
+const TAG_PAIR   :i64 = 0b001;
+const SIZE_PAIR  :i64 = 16;
+const CAR_OFFSET :i64 = 0 - TAG_PAIR;
+const CDR_OFFSET :i64 = 8 - TAG_PAIR;
 
 const MASK_VECTOR  :usize = 0b111;
-const TAG_VECTOR   :usize = 0b011;
-const VLEN_OFFSET  :usize = 0;
-const VDATA_OFFSET :usize = 8;
+const TAG_VECTOR   :i64 = 0b011;
+const VLEN_OFFSET  :i64 = 0 - TAG_VECTOR;
+const VDATA_OFFSET :i64 = 8 - TAG_VECTOR;
 
 const MASK_PROC        :usize = 0b111;
-const TAG_PROC         :usize = 0b010;
-const PROC_CODE_OFFSET :usize = 0;
-const PROC_DATA_OFFSET :usize = 8;
+const TAG_PROC         :i64 = 0b010;
+const PROC_CODE_OFFSET :i64 = 0 - TAG_PROC;
+const PROC_DATA_OFFSET :i64 = 8 - TAG_PROC;
 
 
 const MASK_BOOL :usize = 0b11110111;
-const TAG_BOOL  :usize = 0b00000110;
+const TAG_BOOL  :i64 = 0b00000110;
 
 const FALSE :i64 = 0b0000_0110;
 const TRUE  :i64 = 0b0000_1110;
@@ -70,6 +70,14 @@ fn set1_scm(sym: Scheme, val: Scheme) -> Scheme {
 
 fn mset_scm(v1: Scheme, v2: Scheme, v3: Scheme) -> Scheme {
     Scheme::Mset (Box::new(v1), Box::new(v2), Box::new(v3))
+}
+
+fn mref_scm(v1: Scheme, v2: Scheme) -> Scheme {
+    Scheme::Mref (Box::new(v1), Box::new(v2))
+}
+
+fn let_scm(bindings: HashMap<String, Scheme>, e: Scheme) -> Scheme {
+    Scheme::Let (bindings, Box::new(e))
 }
 
 
@@ -149,24 +157,62 @@ impl SpecifyRepresentation {
                 return Funcall (Box::new(new_func), args);
             }
             Prim1 (op, box value) if is_value_prim(op.as_str()) => {
-                // TODO: fix complex datatype
-                Prim1 (op, Box::new(self.value_helper(value)))
+                let new_value = self.value_helper(value);
+                match op.as_str() {
+                    "car" => mref_scm(new_value, Int64 (CAR_OFFSET)),
+                    "cdr" => mref_scm(new_value, Int64 (CDR_OFFSET)),
+                    "vector-length" => mref_scm(new_value, Int64 (VLEN_OFFSET)),
+                    // "make-vector" => {
+
+                    // }
+                    other => Prim1 (op, Box::new(new_value))
+                }
             }
             Prim2 (op, box Quote (box Int64 (i)), box e) | Prim2 (op, box e, box Quote (box Int64 (i))) if op.as_str() == "*" => {
                 let new_e = self.value_helper(e); 
                 let new_i = Int64 (i >> SHIFT_FIXNUM);
                 return prim2_scm(op, new_e, new_i);
             }
+            Prim2 (op, box e, box Quote (box Int64 (i))) if op.as_str() == "vector-ref" => {
+            // Kent say in this case, because imm is tagged. So we don't need to shift index
+            // but in my case, this imm is not shifted at all. I will test this.
+                let new_e = self.value_helper(e); 
+                let n = (i + VDATA_OFFSET) << SHIFT_FIXNUM;
+                return mref_scm(new_e, Int64(n));
+            }
             Prim2 (op, box v1, box v2) if is_value_prim(op.as_str()) => {
+                let new_v1 = self.value_helper(v1);
+                let new_v2 = self.value_helper(v2);
                 match op.as_str() {
-                    "+" | "-" => prim2_scm(op, self.value_helper(v1), self.value_helper(v2)),
                     "*" => {
-                        let new_v2 = prim2_scm("sra".to_string(), self.value_helper(v2), Int64 (SHIFT_FIXNUM as i64));
-                        return prim2_scm(op, self.value_helper(v1), new_v2);
+                        let new_v2 = prim2_scm("sra".to_string(), new_v2, Int64 (SHIFT_FIXNUM as i64));
+                        return prim2_scm(op, new_v1, new_v2);
                     }
-                    other => panic!("Still not handle {}", other),
+                    "vector-ref" => {
+                        let new_v2 = prim2_scm("+".to_string(), new_v2, Int64 (VDATA_OFFSET));
+                        // Kent say this is saved.
+                        let new_v2 = prim2_scm("sra".to_string(), new_v2, Int64 (SHIFT_FIXNUM as i64));
+                        return mref_scm(new_v1, new_v2);
+                    }
+                    "cons" => {
+                        let tmp_car = gen_uvar();
+                        let tmp_cdr = gen_uvar();
+                        let mut bindings = HashMap::new();
+                        bindings.insert(tmp_car.clone(), new_v1);
+                        bindings.insert(tmp_cdr.clone(), new_v2);
+                        let mut bindings_ptr = HashMap::new();
+                        let tmp = gen_uvar();
+                        let ptr = prim2_scm("+".to_string(), Alloc (Box::new(Int64 (SIZE_PAIR))), Int64 (TAG_PAIR));
+                        bindings_ptr.insert(tmp.clone(), ptr);
+                        let exprs = vec![
+                            mset_scm(Symbol (tmp.clone()), Int64 (CAR_OFFSET), Symbol (tmp_car)),
+                            mset_scm(Symbol (tmp.clone()), Int64 (CDR_OFFSET), Symbol (tmp_cdr)),
+                            Symbol (tmp),
+                        ];
+                        return let_scm(bindings, let_scm(bindings_ptr, Begin (exprs)));
+                    }
+                    other => prim2_scm(op, new_v1, new_v2),
                 }
-                // TODO: fix complex datatype
             }
             Quote (box imm) => self.imm_helper(imm),
             Void => Int64 (VOID),
@@ -197,17 +243,32 @@ impl SpecifyRepresentation {
                 return Let (new_bindings, Box::new(self.effect_helper(effect)));
             }
             Prim2 (op, box v1, box v2) if is_effect_prim(op.as_str()) => {
-                // TODO: fix complex datatype
                 let new_v1 = self.value_helper(v1);
                 let new_v2 = self.value_helper(v2);
-                return prim2_scm(op, new_v1, new_v2);
+                match op.as_str() {
+                    "set-car!" => mset_scm(new_v1, Int64 (CAR_OFFSET), new_v2),
+                    other => prim2_scm(op, new_v1, new_v2),
+                }
+            }
+            Prim3 (op, box v1, box Quote (box Int64 (i)), box v3) if is_effect_prim(op.as_str()) => {
+                let new_v1 = self.value_helper(v1);
+                let new_v3 = self.value_helper(v3);
+                let n = (i + VDATA_OFFSET) << SHIFT_FIXNUM;
+                return mset_scm(new_v1, Int64 (n), new_v3)
             }
             Prim3 (op, box v1, box v2, box v3) if is_effect_prim(op.as_str()) => {
-                // TODO: fix complex datatype
                 let new_v1 = self.value_helper(v1);
                 let new_v2 = self.value_helper(v2);
                 let new_v3 = self.value_helper(v3);
-                return prim3_scm(op, new_v1, new_v2, new_v3);
+                match op.as_str() {
+                    "vector-set!" => {
+                        let new_v2 = prim2_scm("+".to_string(), new_v2, Int64 (VDATA_OFFSET));
+                        // Kent say this is saved.
+                        let new_v2 = prim2_scm("sra".to_string(), new_v2, Int64 (SHIFT_FIXNUM as i64));
+                        return mset_scm(new_v1, new_v2, new_v3);
+                    }
+                    e => panic!("Invalid op {}", e),
+                }
             }
             Funcall (box mut func, mut args) => {
                 let new_func = self.value_helper(func);
