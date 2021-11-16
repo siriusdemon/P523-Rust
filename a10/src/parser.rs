@@ -185,6 +185,7 @@ impl Parser {
             "vector-set!" => self.parse_prim3(),
             "nop" => self.parse_nop(),
             "void" => self.parse_void(),
+            "true" | "false" => self.parse_bool(),
             s_expr => self.parse_funcall(),
         }
     }
@@ -359,8 +360,9 @@ impl Parser {
     fn parse_quote_list(&mut self) -> Scheme {
         let _left = self.remove_top().unwrap();
         let _right = self.remove_top().unwrap();
+        assert!(_left.token.as_str() == "(" || _left.token.as_str() == "[");
         assert!(is_pair(_left.token.as_str(), _right.token.as_str()));
-        return Scheme::EmptyList;
+        return Scheme::Quote (Box::new(Scheme::EmptyList));
     }
 
     fn parse_symbol(&mut self) -> Scheme {
@@ -380,8 +382,6 @@ impl Parser {
         }
     }
 
-    // same as quote, literal allow atom or list
-    // but right now, there is only literal atom
     fn parse_literal(&mut self) -> Scheme {
         let _hash = self.remove_top();
         let t = self.top().unwrap();
@@ -408,6 +408,17 @@ impl Parser {
         let _nop = self.remove_top();
         let _right = self.remove_top();
         return Scheme::Nop;
+    }
+
+    fn parse_bool(&mut self) -> Scheme {
+        let s = self.remove_top().unwrap().token;
+        let e = match s.as_str() {
+            "true" => Scheme::Bool(true),
+            "false" => Scheme::Bool(false),
+            any => panic!("Invalid bool value {}", any),
+        };
+        let _right = self.remove_top();
+        return e;
     }
 
     fn parse_void(&mut self) -> Scheme {

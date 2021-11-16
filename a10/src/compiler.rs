@@ -18,9 +18,46 @@ use Asm::*;
 //
 // ---------------------------------------------------------------------
 
+const MASK_FIXNUM  :usize = 0b111;
+const FIXNUM_BITS  :usize = 61;
+const SHIFT_FIXNUM :usize = 3;
+const TAG_FIXNUM   :usize = 0b000;
+
+const MASK_PAIR  :usize = 0b111;
+const TAG_PAIR   :usize = 0b001;
+const SIZE_PAIR  :usize = 16;
+const CAR_OFFSET :usize = 0;
+const CDR_OFFSET :usize = 8;
+
+const MASK_VECTOR  :usize = 0b111;
+const TAG_VECTOR   :usize = 0b011;
+const VLEN_OFFSET  :usize = 0;
+const VDATA_OFFSET :usize = 8;
+
+const MASK_PROC        :usize = 0b111;
+const TAG_PROC         :usize = 0b010;
+const PROC_CODE_OFFSET :usize = 0;
+const PROC_DATA_OFFSET :usize = 8;
+
+
+const MASK_BOOL :usize = 0b11110111;
+const TAG_BOOL  :usize = 0b00000110;
+
+const FALSE :i64 = 0b0000_0110;
+const TRUE  :i64 = 0b0000_1110;
+const NIL   :i64 = 0b0001_0110;
+const VOID  :i64 = 0b0001_1110;
+
+fn prim1_scm(op: String, v1: Scheme) -> Scheme {
+    Scheme::Prim1 (op, Box::new(v1))
+}
 
 fn prim2_scm(op: String, v1: Scheme, v2: Scheme) -> Scheme {
     Scheme::Prim2 (op, Box::new(v1), Box::new(v2))
+}
+
+fn prim3_scm(op: String, v1: Scheme, v2: Scheme, v3: Scheme) -> Scheme {
+    Scheme::Prim3 (op, Box::new(v1), Box::new(v2), Box::new(v3))
 }
 
 fn if2_scm(pred: Scheme, b1: Scheme, b2: Scheme) -> Scheme {
@@ -36,6 +73,18 @@ fn mset_scm(v1: Scheme, v2: Scheme, v3: Scheme) -> Scheme {
 }
 
 
+fn is_value_prim(s: &str) -> bool {
+    ["+", "-", "*", "car", "cdr", "cons", "make-vector", "vector-length", "vector-ref", "void"].contains(&s)
+}
+
+fn is_pred_prim(s: &str) -> bool {
+    ["<=", "<", "=", ">=", ">", "boolean?", "eq?", "fixnum?", "null?", "pair?", "vector?"].contains(&s)
+}
+
+fn is_effect_prim(s: &str) -> bool {
+    ["set-car!", "set-cdr!", "vector-set!"].contains(&s)
+}
+
 pub struct ParseScheme {}
 impl ParseScheme {
     pub fn run(&self, scm: &str) -> Scheme {
@@ -46,6 +95,166 @@ impl ParseScheme {
         return scm;
     }
 }
+
+
+pub struct SpecifyRepresentation {}
+impl SpecifyRepresentation {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        match scm {
+            Letrec (mut lambdas, box value) => {
+                lambdas = lambdas.into_iter().map(|e| self.helper(e)).collect();
+                let new_value = self.helper(value);
+                return Letrec (lambdas, Box::new(new_value));
+            }
+            e => panic!("Invalid Program {}", e),
+        }
+    }
+
+    fn helper(&self, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        match scm {
+            Lambda (labl, args, box value) => {
+                Lambda (labl, args, Box::new(self.value_helper(value)))
+            }
+            value => self.value_helper(value),
+        }
+    }
+
+    fn value_helper(&self, value: Scheme) -> Scheme {
+        use Scheme::*;
+        match value {
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred);
+                let new_b1 = self.value_helper(b1);
+                let new_b2 = self.value_helper(b2);
+                return if2_scm(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                let value = exprs.pop().unwrap();
+                exprs = exprs.into_iter().map(|x| self.effect_helper(x)).collect();
+                exprs.push(value);
+                return Begin (exprs);
+            }
+            Let (mut bindings, box value) => {
+                let mut new_bindings = HashMap::new();
+                for (sym, val) in bindings.drain() {
+                    new_bindings.insert(sym, self.value_helper(val));
+                }
+                return Let (new_bindings, Box::new(self.value_helper(value)));
+            }
+            Funcall (box mut func, mut args) => {
+                let new_func = self.value_helper(func);
+                args = args.into_iter().map(|a| self.value_helper(a)).collect();
+                return Funcall (Box::new(new_func), args);
+            }
+            Prim1 (op, box value) if is_value_prim(op.as_str()) => {
+                // TODO: fix complex datatype
+                Prim1 (op, Box::new(self.value_helper(value)))
+            }
+            Prim2 (op, box v1, box v2) if is_value_prim(op.as_str()) => {
+                // TODO: fix complex datatype
+                prim2_scm(op, self.value_helper(v1), self.value_helper(v2))
+            }
+            Quote (box imm) => self.imm_helper(imm),
+            Void => Int64 (VOID),
+            Symbol (s) => Symbol (s),
+            other => panic!("Invalid Scheme Value {}", other),
+        }
+    }
+
+    fn effect_helper(&self, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        match scm {
+            Nop => Nop,
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred);
+                let new_b1 = self.effect_helper(b1);
+                let new_b2 = self.effect_helper(b2);
+                return if2_scm(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e)).collect();
+                return Begin(exprs);
+            }
+            Let (mut bindings, box effect) => {
+                let mut new_bindings = HashMap::new();
+                for (sym, val) in bindings.drain() {
+                    new_bindings.insert(sym, self.value_helper(val));
+                }
+                return Let (new_bindings, Box::new(self.effect_helper(effect)));
+            }
+            Prim2 (op, box v1, box v2) if is_effect_prim(op.as_str()) => {
+                // TODO: fix complex datatype
+                let new_v1 = self.value_helper(v1);
+                let new_v2 = self.value_helper(v2);
+                return prim2_scm(op, new_v1, new_v2);
+            }
+            Prim3 (op, box v1, box v2, box v3) if is_effect_prim(op.as_str()) => {
+                // TODO: fix complex datatype
+                let new_v1 = self.value_helper(v1);
+                let new_v2 = self.value_helper(v2);
+                let new_v3 = self.value_helper(v3);
+                return prim3_scm(op, new_v1, new_v2, new_v3);
+            }
+            Funcall (box mut func, mut args) => {
+                let new_func = self.value_helper(func);
+                args = args.into_iter().map(|a| self.value_helper(a)).collect();
+                return Funcall (Box::new(new_func), args);
+            }
+            other => panic!("Invalid Scheme Effect {}", other),
+        }
+    }
+
+    fn pred_helper(&self, pred: Scheme) -> Scheme {
+        use Scheme::*;
+        match pred {
+            Bool (b) => Bool (b),
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred);
+                let new_b1 = self.pred_helper(b1);
+                let new_b2 = self.pred_helper(b2);
+                return if2_scm(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                let pred = exprs.pop().unwrap();
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e)).collect();
+                exprs.push(self.pred_helper(pred));
+                return Begin(exprs);
+            }
+            Let (mut bindings, box pred) => {
+                let mut new_bindings = HashMap::new();
+                for (sym, val) in bindings.drain() {
+                    new_bindings.insert(sym, self.value_helper(val));
+                }
+                return Let (new_bindings, Box::new(self.pred_helper(pred)));
+            }
+            Prim1 (op, box e1) if is_pred_prim(op.as_str()) => {
+                // TODO:
+                let new_e1 = self.value_helper(e1);
+                return prim1_scm(op, new_e1);
+            }
+            Prim2 (op, box e1, box e2) if is_pred_prim(op.as_str()) => {
+                let new_e1 = self.value_helper(e1);
+                let new_e2 = self.value_helper(e2);
+                return prim2_scm(op, new_e1, new_e2);
+            }
+            e => panic!("Invalid Scheme Pred {}", e),
+        }
+    }
+
+    fn imm_helper(&self, imm: Scheme) -> Scheme {
+        use Scheme::*;
+        match imm {
+            Int64 (i) => Int64 ( i << SHIFT_FIXNUM ),
+            EmptyList => Int64 ( NIL ),
+            Bool (true) => Int64 ( TRUE ),
+            Bool (false) => Int64 ( FALSE ),
+            any => panic!("Invalid Immediate {}!", any),
+        }
+    }
+}
+
 
 pub struct UncoverLocals {}
 impl UncoverLocals {
@@ -3008,6 +3217,8 @@ pub fn everybody_home(expr: &Expr) -> bool {
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseScheme{}.run(s);
     compile_formatter("ParseScheme", &expr);
+    let expr = SpecifyRepresentation{}.run(expr);
+    compile_formatter("SpecifyRepresentation", &expr);
     // let expr = UncoverLocals{}.run(expr);
     // compile_formatter("UncoverLocals", &expr);
     // let expr = RemoveLet{}.run(expr);
