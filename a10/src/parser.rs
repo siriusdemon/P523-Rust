@@ -175,9 +175,14 @@ impl Parser {
             "set!" => self.parse_set(),
             "if" => self.parse_if(),
             "let" => self.parse_let(),
+            "car" | "cdr" | "make-vector" | "vector-length" | 
+            "boolean?" | "fixnum?" | "null?" | "pair?" | "vector?"
+                => self.parse_prim1(),
             "+" | "-" | "*" | "logor" | "logand" | "sra" |
-            "=" | ">" | "<" | ">=" | "<=" | "eq?"
+            "=" | ">" | "<" | ">=" | "<=" | "eq?" |
+            "cons" | "vector-ref" | "set-car!" | "set-cdr!"
                 => self.parse_prim2(),
+            "vector-set!" => self.parse_prim3(),
             "nop" => self.parse_nop(),
             "void" => self.parse_void(),
             s_expr => self.parse_funcall(),
@@ -303,6 +308,14 @@ impl Parser {
         Scheme::Set(Box::new(e1), Box::new(e2))
     }
 
+    fn parse_prim1(&mut self) -> Scheme {
+        let op = self.remove_top();
+        let e1 = self.parse_expr();
+        let _right = self.remove_top();
+        Scheme::Prim1(op.unwrap().token, Box::new(e1))
+    }
+
+
     fn parse_prim2(&mut self) -> Scheme {
         let op = self.remove_top();
         let e1 = self.parse_expr();
@@ -310,6 +323,16 @@ impl Parser {
         let _right = self.remove_top();
         Scheme::Prim2(op.unwrap().token, Box::new(e1), Box::new(e2))
     }
+
+    fn parse_prim3(&mut self) -> Scheme {
+        let op = self.remove_top();
+        let e1 = self.parse_expr();
+        let e2 = self.parse_expr();
+        let e3 = self.parse_expr();
+        let _right = self.remove_top();
+        Scheme::Prim3(op.unwrap().token, Box::new(e1), Box::new(e2), Box::new(e3))
+    }
+
 
     fn parse_quote(&mut self) -> Scheme {
         let _quote = self.remove_top();
