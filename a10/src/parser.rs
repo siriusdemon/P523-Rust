@@ -144,7 +144,6 @@ impl Parser {
         self.parse_expr()
     }
 
-    // at the very top level, only list and atom allowed
     pub fn parse_expr(&mut self) -> Scheme {
         if let Some(ref t) = self.top() {
             if t.token.as_str() == "(" || t.token.as_str() == "[" {
@@ -153,17 +152,6 @@ impl Parser {
             return self.parse_atom();
         }
         panic!("Unexpected Eof");
-    }
-
-    fn parse_atom(&mut self) -> Scheme {
-        let token = &self.top().unwrap().token;
-        let chars: Vec<char> = token.chars().collect();
-        match chars[0] {
-            '\'' => self.parse_quote(),
-            '#' => self.parse_literal(),
-            '0' ..= '9' => self.parse_integer(),
-            e => self.parse_symbol(),
-        }
     }
 
     fn parse_list(&mut self) -> Scheme {
@@ -334,6 +322,14 @@ impl Parser {
         Scheme::Prim3(op.unwrap().token, Box::new(e1), Box::new(e2), Box::new(e3))
     }
 
+    fn parse_atom(&mut self) -> Scheme {
+        let token = &self.top().unwrap().token;
+        let chars: Vec<char> = token.chars().collect();
+        match chars[0] {
+            '\'' => self.parse_quote(),
+            e => self.parse_symbol(),
+        }
+    }
 
     fn parse_quote(&mut self) -> Scheme {
         let _quote = self.remove_top();
