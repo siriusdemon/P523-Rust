@@ -152,9 +152,21 @@ impl SpecifyRepresentation {
                 // TODO: fix complex datatype
                 Prim1 (op, Box::new(self.value_helper(value)))
             }
+            Prim2 (op, box Quote (box Int64 (i)), box e) | Prim2 (op, box e, box Quote (box Int64 (i))) if op.as_str() == "*" => {
+                let new_e = self.value_helper(e); 
+                let new_i = Int64 (i >> SHIFT_FIXNUM);
+                return prim2_scm(op, new_e, new_i);
+            }
             Prim2 (op, box v1, box v2) if is_value_prim(op.as_str()) => {
+                match op.as_str() {
+                    "+" | "-" => prim2_scm(op, self.value_helper(v1), self.value_helper(v2)),
+                    "*" => {
+                        let new_v2 = prim2_scm("sra".to_string(), self.value_helper(v2), Int64 (SHIFT_FIXNUM as i64));
+                        return prim2_scm(op, self.value_helper(v1), new_v2);
+                    }
+                    other => panic!("Still not handle {}", other),
+                }
                 // TODO: fix complex datatype
-                prim2_scm(op, self.value_helper(v1), self.value_helper(v2))
             }
             Quote (box imm) => self.imm_helper(imm),
             Void => Int64 (VOID),
