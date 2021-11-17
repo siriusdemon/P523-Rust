@@ -20,7 +20,7 @@ use Asm::*;
 
 const MASK_FIXNUM  :i64 = 0b111;
 const FIXNUM_BITS  :usize = 61;
-const SHIFT_FIXNUM :usize = 3;
+const SHIFT_FIXNUM :i64 = 3;
 const TAG_FIXNUM   :i64 = 0b000;
 
 const MASK_PAIR  :i64 = 0b111;
@@ -202,7 +202,7 @@ impl SpecifyRepresentation {
             // Kent say in this case, because imm is tagged. So we don't need to shift index
             // but in my case, this imm is not shifted at all. I will test this.
                 let new_e = self.value_helper(e); 
-                let n = (i + VDATA_OFFSET) << SHIFT_FIXNUM;
+                let n = i << ALIGN_SHIFT as i64 + VDATA_OFFSET;
                 return mref_scm(new_e, Int64(n));
             }
             Prim2 (op, box v1, box v2) if is_value_prim(op.as_str()) => {
@@ -274,10 +274,10 @@ impl SpecifyRepresentation {
                     other => prim2_scm(op, new_v1, new_v2),
                 }
             }
-            Prim3 (op, box v1, box Quote (box Int64 (i)), box v3) if is_effect_prim(op.as_str()) => {
+            Prim3 (op, box v1, box Quote (box Int64 (i)), box v3) if op.as_str() == "vector-set!" => {
                 let new_v1 = self.value_helper(v1);
                 let new_v3 = self.value_helper(v3);
-                let n = (i + VDATA_OFFSET) << SHIFT_FIXNUM;
+                let n = i << ALIGN_SHIFT as i64 + VDATA_OFFSET;
                 return mset_scm(new_v1, Int64 (n), new_v3)
             }
             Prim3 (op, box v1, box v2, box v3) if is_effect_prim(op.as_str()) => {
