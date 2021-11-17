@@ -18,29 +18,29 @@ use Asm::*;
 //
 // ---------------------------------------------------------------------
 
-const MASK_FIXNUM  :usize = 0b111;
+const MASK_FIXNUM  :i64 = 0b111;
 const FIXNUM_BITS  :usize = 61;
 const SHIFT_FIXNUM :usize = 3;
 const TAG_FIXNUM   :i64 = 0b000;
 
-const MASK_PAIR  :usize = 0b111;
+const MASK_PAIR  :i64 = 0b111;
 const TAG_PAIR   :i64 = 0b001;
 const SIZE_PAIR  :i64 = 16;
 const CAR_OFFSET :i64 = 0 - TAG_PAIR;
 const CDR_OFFSET :i64 = 8 - TAG_PAIR;
 
-const MASK_VECTOR  :usize = 0b111;
+const MASK_VECTOR  :i64 = 0b111;
 const TAG_VECTOR   :i64 = 0b011;
 const VLEN_OFFSET  :i64 = 0 - TAG_VECTOR;
 const VDATA_OFFSET :i64 = 8 - TAG_VECTOR;
 
-const MASK_PROC        :usize = 0b111;
+const MASK_PROC        :i64 = 0b111;
 const TAG_PROC         :i64 = 0b010;
 const PROC_CODE_OFFSET :i64 = 0 - TAG_PROC;
 const PROC_DATA_OFFSET :i64 = 8 - TAG_PROC;
 
 
-const MASK_BOOL :usize = 0b11110111;
+const MASK_BOOL :i64 = 0b11110111;
 const TAG_BOOL  :i64 = 0b00000110;
 
 const FALSE :i64 = 0b0000_0110;
@@ -189,9 +189,8 @@ impl SpecifyRepresentation {
                         return prim2_scm(op, new_v1, new_v2);
                     }
                     "vector-ref" => {
+                        // in this case, we really save one operation
                         let new_v2 = prim2_scm("+".to_string(), new_v2, Int64 (VDATA_OFFSET));
-                        // Kent say this is saved.
-                        let new_v2 = prim2_scm("sra".to_string(), new_v2, Int64 (SHIFT_FIXNUM as i64));
                         return mref_scm(new_v1, new_v2);
                     }
                     "cons" => {
@@ -263,8 +262,6 @@ impl SpecifyRepresentation {
                 match op.as_str() {
                     "vector-set!" => {
                         let new_v2 = prim2_scm("+".to_string(), new_v2, Int64 (VDATA_OFFSET));
-                        // Kent say this is saved.
-                        let new_v2 = prim2_scm("sra".to_string(), new_v2, Int64 (SHIFT_FIXNUM as i64));
                         return mset_scm(new_v1, new_v2, new_v3);
                     }
                     e => panic!("Invalid op {}", e),
@@ -303,14 +300,33 @@ impl SpecifyRepresentation {
                 return Let (new_bindings, Box::new(self.pred_helper(pred)));
             }
             Prim1 (op, box e1) if is_pred_prim(op.as_str()) => {
-                // TODO:
                 let new_e1 = self.value_helper(e1);
-                return prim1_scm(op, new_e1);
+                match op.as_str() {
+                    "boolean?" => {
+                        prim2_scm("=".to_string(), prim2_scm("logand".to_string(), new_e1, Int64 (MASK_BOOL)), Int64 (TAG_BOOL))
+                    }
+                    "fixnum?" => {
+                        prim2_scm("=".to_string(), prim2_scm("logand".to_string(), new_e1, Int64 (MASK_FIXNUM)), Int64 (TAG_FIXNUM))
+                    }
+                    "pair?" => {
+                        prim2_scm("=".to_string(), prim2_scm("logand".to_string(), new_e1, Int64 (MASK_PAIR)), Int64 (TAG_PAIR))
+                    }
+                    "vector?" => {
+                        prim2_scm("=".to_string(), prim2_scm("logand".to_string(), new_e1, Int64 (MASK_VECTOR)), Int64 (TAG_VECTOR))
+                    }
+                    "null?" => {
+                        prim2_scm("=".to_string(), new_e1, Int64 (NIL))
+                    }
+                    other => panic!("Invalid Predicate {}", other),
+                }
             }
             Prim2 (op, box e1, box e2) if is_pred_prim(op.as_str()) => {
                 let new_e1 = self.value_helper(e1);
                 let new_e2 = self.value_helper(e2);
-                return prim2_scm(op, new_e1, new_e2);
+                match op.as_str() {
+                    "eq?" => prim2_scm("=".to_string(), new_e1, new_e2),
+                    other => prim2_scm(op, new_e1, new_e2),
+                }
             }
             e => panic!("Invalid Scheme Pred {}", e),
         }
