@@ -323,3 +323,15 @@ fn compile16() {
                    x.1000)))))))";
     test_helper(s, "c16.s", "0");
 }
+
+#[test]
+fn compile17() {
+    let s = "
+    (letrec ([f$1 (lambda (x.1) x.1)])
+      (let ([v (make-vector '2)])
+        (begin 
+          (vector-set! v '0 f$1)
+          (vector-set! v '1 '1)
+          ((vector-ref v '0) (vector-ref v '1)))))";
+    test_helper(s, "c17.s", "1");
+}

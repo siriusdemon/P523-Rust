@@ -2192,7 +2192,7 @@ impl SelectInstructions {
     }
 
     fn set1_fv_rewrite(&self, a: String, b: String, unspills: &mut HashSet<String>) -> Expr {
-        if is_fv(&a) && is_fv(&b) {
+        if is_fv(&a) && (is_fv(&b) || is_label(&b)) {
             let new_uvar = gen_uvar();
             unspills.insert(new_uvar.clone());
             let expr1 = set1(Symbol (new_uvar.clone()), Symbol (b));
@@ -2219,7 +2219,7 @@ impl SelectInstructions {
         return Begin (vec![expr1, expr2]);
     }
     
-    fn replace_fv(&self, expr: Expr, unspills: &mut HashSet<String>, prelude: &mut Vec<Expr>) -> Expr {
+    fn replace_fv_label(&self, expr: Expr, unspills: &mut HashSet<String>, prelude: &mut Vec<Expr>) -> Expr {
         if let Symbol (s) = expr { 
             if is_fv(&s) || is_label(&s) {
                 let new_uvar = gen_uvar();
@@ -2291,7 +2291,7 @@ impl SelectInstructions {
         let new_uvar = gen_uvar();
         unspills.insert(new_uvar.clone());  
         exprs.push(set1(Symbol (new_uvar.clone()), base)); 
-        let new_value = self.replace_fv(value, unspills, &mut exprs);
+        let new_value = self.replace_fv_label(value, unspills, &mut exprs);
         let new_mset = Mset (Box::new(Symbol (new_uvar)), Box::new(offset), Box::new(new_value));
         exprs.push(new_mset); 
         return Begin (exprs);
@@ -2299,9 +2299,9 @@ impl SelectInstructions {
 
     fn mset_fv_rewrite(&self, base: Expr, offset: Expr, value: Expr, unspills: &mut HashSet<String>) -> Expr {
         let mut exprs = vec![];
-        let new_base = self.replace_fv(base, unspills, &mut exprs);
-        let new_offset = self.replace_fv(offset, unspills, &mut exprs);
-        let new_value = self.replace_fv(value, unspills, &mut exprs);
+        let new_base = self.replace_fv_label(base, unspills, &mut exprs);
+        let new_offset = self.replace_fv_label(offset, unspills, &mut exprs);
+        let new_value = self.replace_fv_label(value, unspills, &mut exprs);
         let new_mset = Mset (Box::new(new_base), Box::new(new_offset), Box::new(new_value));
         if exprs.len() == 0 { return new_mset; }
         exprs.push(new_mset);
