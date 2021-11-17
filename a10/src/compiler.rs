@@ -202,7 +202,7 @@ impl SpecifyRepresentation {
             // Kent say in this case, because imm is tagged. So we don't need to shift index
             // but in my case, this imm is not shifted at all. I will test this.
                 let new_e = self.value_helper(e); 
-                let n = i << ALIGN_SHIFT as i64 + VDATA_OFFSET;
+                let n = (i << ALIGN_SHIFT) + VDATA_OFFSET;
                 return mref_scm(new_e, Int64(n));
             }
             Prim2 (op, box v1, box v2) if is_value_prim(op.as_str()) => {
@@ -277,8 +277,10 @@ impl SpecifyRepresentation {
             Prim3 (op, box v1, box Quote (box Int64 (i)), box v3) if op.as_str() == "vector-set!" => {
                 let new_v1 = self.value_helper(v1);
                 let new_v3 = self.value_helper(v3);
-                let n = i << ALIGN_SHIFT as i64 + VDATA_OFFSET;
-                return mset_scm(new_v1, Int64 (n), new_v3)
+                println!("vector-set index {}", i);
+                let n = (i << ALIGN_SHIFT) + VDATA_OFFSET;
+                println!("vector-set index ajust {}", n);
+                return mset_scm(new_v1, Int64 (n), new_v3);
             }
             Prim3 (op, box v1, box v2, box v3) if is_effect_prim(op.as_str()) => {
                 let new_v1 = self.value_helper(v1);
@@ -924,7 +926,7 @@ const FRAME_VARS :[&str; 101] = [
     "fv91", "fv92", "fv93", "fv94", "fv95", "fv96", "fv97", "fv98", "fv99", "fv100",
 ];
 
-const ALIGN_SHIFT: usize = 3;
+const ALIGN_SHIFT: i64 = 3;
 // ---------------------- general utils --------------------------------
 fn is_reg(reg: &str) -> bool {
     REGISTERS.contains(&reg)

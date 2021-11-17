@@ -10,6 +10,13 @@ use compiler::compile;
 
 
 fn main() -> std::io::Result<()> {
-    let s = "(letrec () (let ([n.1 '#f]) (if (eq? n.1 n.1) '() (* '-1 '2))))";
+    let s = "
+    (letrec ()
+      (let ([v (make-vector '3)])
+        (begin 
+          (vector-set! v '0 '10)
+          (vector-set! v '1 '2)
+          (vector-set! v '2 '4)
+          (vector-ref v '1))))";
     compile(s, "t.s")
 }

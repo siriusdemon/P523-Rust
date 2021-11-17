@@ -25,10 +25,6 @@ fn test_helper(program: &str, filename: &str, expect: &str) {
     assert_eq!(r.as_str().trim(), expect);
 }
 
-// #[test]
-// fn scanner1() {
-//     let s = "(letrec () (let ([n.1 '19]) (if (<= n.1 '19) '#t '#f)))";
-// }
 
 #[test]
 fn compile1() {
@@ -136,4 +132,28 @@ fn compile9() {
            (vector-set! p.7 '0 '2)
            (if-test$5 '3 q.6 p.7))))";
     test_helper(s, "c9.s", "6");
+}
+
+#[test]
+fn compile10() {
+    let s = "
+    (letrec ()
+      (let ([v (make-vector '3)])
+        (begin 
+          (vector-set! v '0 '10)
+          (vector-set! v '1 '2)
+          (vector-set! v '2 '4)
+          (vector-ref v '1))))";
+    test_helper(s, "c10.s", "2");
+}
+
+#[test]
+fn compile11() {
+    let s = "
+    (letrec ()
+      (let ([p (cons '10 '20)])
+        (begin 
+          (set-car! p '42)
+          (cdr p))))";
+    test_helper(s, "c11.s", "20");
 }
