@@ -81,6 +81,10 @@ fn let_scm(bindings: HashMap<String, Scheme>, e: Scheme) -> Scheme {
     Scheme::Let (bindings, Box::new(e))
 }
 
+fn funcall_scm(func: Scheme, args: Vec<Scheme>) -> Scheme {
+    Scheme::Funcall (Box::new(func), args)
+}
+
 
 fn is_value_prim(s: &str) -> bool {
     ["+", "-", "*", "car", "cdr", "cons", "make-vector", "vector-length", "vector-ref", "void"].contains(&s)
@@ -105,6 +109,61 @@ impl ParseScheme {
     }
 }
 
+
+pub struct LiftLetrec {}
+impl LiftLetrec {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        let mut lambdas = vec![];
+        let body = self.lift_letrec(scm, &mut lambdas);
+        return Letrec (lambdas, Box::new(body));
+    }
+
+    fn lift_letrec(&self, scm: Scheme, lambdas: &mut Vec<Scheme>) -> Scheme {
+        use Scheme::*;
+        match scm {
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.lift_letrec(pred, lambdas);
+                let new_b1 = self.lift_letrec(b1, lambdas);
+                let new_b2 = self.lift_letrec(b2, lambdas);
+                return if2_scm(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                exprs = exprs.into_iter().map(|e| self.lift_letrec(e, lambdas)).collect();
+                return Begin (exprs);
+            }
+            Let (mut bindings, box tail) => {
+                let mut new_bindings = HashMap::new();
+                for (k, val) in bindings.drain() {
+                    new_bindings.insert(k, self.lift_letrec(val, lambdas));
+                }
+                return let_scm(new_bindings, self.lift_letrec(tail, lambdas));
+            }
+            Prim1 (op, box e) => prim1_scm(op, self.lift_letrec(e, lambdas)),
+            Prim2 (op, box e1, box e2) => {
+                return prim2_scm(op, self.lift_letrec(e1, lambdas), self.lift_letrec(e2, lambdas));
+            }
+            Prim3 (op, box e1, box e2, box e3) => {
+                return prim3_scm(op, self.lift_letrec(e1, lambdas), self.lift_letrec(e2, lambdas), self.lift_letrec(e3, lambdas));
+            }
+            Funcall (box func, mut args) => {
+                let new_func = self.lift_letrec(func, lambdas);
+                args = args.into_iter().map(|e| self.lift_letrec(e, lambdas)).collect();
+                return funcall_scm(new_func, args);
+            }
+            Letrec (mut lambdas_local, box body) => {
+                lambdas_local = lambdas_local.into_iter().map(|e| self.lift_letrec(e, lambdas)).collect();
+                lambdas.append(&mut lambdas_local);
+                return self.lift_letrec(body, lambdas);
+            }
+            Lambda (label, args, box body) => Lambda (label, args, Box::new(self.lift_letrec(body, lambdas))),
+            Quote (box imm) => Quote (Box::new(imm)),
+            Symbol (s) => Symbol (s),
+            Void => Void,
+            other => panic!("Invalid Scheme Program {}", other),
+        }
+    }
+}
 
 pub struct SpecifyRepresentation {}
 impl SpecifyRepresentation {
@@ -3348,6 +3407,8 @@ pub fn everybody_home(expr: &Expr) -> bool {
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseScheme{}.run(s);
     compile_formatter("ParseScheme", &expr);
+    let expr = LiftLetrec{}.run(expr);
+    compile_formatter("LiftLetrec", &expr);
     let expr = SpecifyRepresentation{}.run(expr);
     compile_formatter("SpecifyRepresentation", &expr);
     let expr = UncoverLocals{}.run(expr);
