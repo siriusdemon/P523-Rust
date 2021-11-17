@@ -103,10 +103,12 @@ impl fmt::Display for Scheme {
                 let seqs_s = seqs_ref.join(" ");
                 write!(f, "({} {})", name, seqs_s)
             }
+            Quote (box Bool(true)) => write!(f, "'#t"),
+            Quote (box Bool(false)) => write!(f, "'#f"),
             Quote (box imm) => write!(f, "'{}", imm),
             Int64 (i) => write!(f, "{}", i),
-            Bool (true) => write!(f, "#t"),
-            Bool (false) => write!(f, "#f"),
+            Bool (true) => write!(f, "(true)"),
+            Bool (false) => write!(f, "(false)"),
             EmptyList => write!(f, "()"),
             Nop => write!(f, "(nop)"),
             Void => write!(f, "(void)"),

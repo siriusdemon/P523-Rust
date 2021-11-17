@@ -542,8 +542,11 @@ impl CompileToExpr {
                 let new_b2 = self.value_helper(b2);
                 return if2(new_pred, new_b1, new_b2);
             }
-            Scheme::Begin (exprs) => {
-                let new_exprs: Vec<_> = exprs.into_iter().map(|x| self.value_helper(x)).collect();
+            Scheme::Begin (mut exprs) => {
+                let value = exprs.pop().unwrap();
+                let value = self.value_helper(value);
+                let mut new_exprs: Vec<_> = exprs.into_iter().map(|x| self.effect_helper(x)).collect();
+                new_exprs.push(value);
                 return Begin (new_exprs);
             }
             triv => self.scheme_to_expr(triv),

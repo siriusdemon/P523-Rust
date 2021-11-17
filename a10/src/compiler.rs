@@ -33,6 +33,7 @@ const MASK_VECTOR  :i64 = 0b111;
 const TAG_VECTOR   :i64 = 0b011;
 const VLEN_OFFSET  :i64 = 0 - TAG_VECTOR;
 const VDATA_OFFSET :i64 = 8 - TAG_VECTOR;
+const DISP_VDATA   :i64 = 8;
 
 const MASK_PROC        :i64 = 0b111;
 const TAG_PROC         :i64 = 0b010;
@@ -141,7 +142,7 @@ impl SpecifyRepresentation {
             Begin (mut exprs) => {
                 let value = exprs.pop().unwrap();
                 exprs = exprs.into_iter().map(|x| self.effect_helper(x)).collect();
-                exprs.push(value);
+                exprs.push(self.value_helper(value));
                 return Begin (exprs);
             }
             Let (mut bindings, box value) => {
@@ -156,15 +157,39 @@ impl SpecifyRepresentation {
                 args = args.into_iter().map(|a| self.value_helper(a)).collect();
                 return Funcall (Box::new(new_func), args);
             }
+            Prim1 (op, box Quote (box Int64 (i))) if op.as_str() == "make-vector" => {
+                let tmp = gen_uvar();
+                let vsize = (i << ALIGN_SHIFT) + DISP_VDATA;
+                let ptr = prim2_scm("+".to_string(), Alloc (Box::new(Int64 (vsize))), Int64 (TAG_VECTOR));
+                let mut bindings = HashMap::new();
+                bindings.insert(tmp.clone(), ptr);
+                let exprs = vec![
+                    mset_scm(Symbol (tmp.clone()), Int64 (VLEN_OFFSET), Int64 (i)),
+                    Symbol (tmp),
+                ];
+                return let_scm(bindings, Begin (exprs));
+            }
             Prim1 (op, box value) if is_value_prim(op.as_str()) => {
                 let new_value = self.value_helper(value);
                 match op.as_str() {
                     "car" => mref_scm(new_value, Int64 (CAR_OFFSET)),
                     "cdr" => mref_scm(new_value, Int64 (CDR_OFFSET)),
                     "vector-length" => mref_scm(new_value, Int64 (VLEN_OFFSET)),
-                    // "make-vector" => {
-
-                    // }
+                    "make-vector" => {
+                        let tmp1 = gen_uvar();                            
+                        let mut bindings1 = HashMap::new();
+                        bindings1.insert(tmp1.clone(), new_value);
+                        let tmp2 = gen_uvar();
+                        let vsize = prim2_scm("+".to_string(), Int64 (DISP_VDATA), Symbol (tmp1.clone()));
+                        let ptr = prim2_scm("+".to_string(), Alloc (Box::new(vsize)), Int64 (TAG_VECTOR));
+                        let mut bindings2 = HashMap::new();
+                        bindings2.insert(tmp2.clone(), ptr);
+                        let exprs = vec![
+                            mset_scm(Symbol (tmp2.clone()), Int64 (VLEN_OFFSET), Symbol (tmp1)),
+                            Symbol (tmp2),
+                        ];
+                        return let_scm(bindings1, let_scm(bindings2, Begin (exprs)));
+                    }
                     other => Prim1 (op, Box::new(new_value))
                 }
             }
@@ -404,8 +429,9 @@ impl UncoverLocals {
                 self.value_helper(v2, locals);
             }
             Let (bindings, box tail) => {
-                for v in bindings.keys() {
-                    locals.insert(v.to_string());
+                for (k, v) in bindings {
+                    locals.insert(k.to_string());
+                    self.value_helper(v, locals);
                 }
                 self.tail_helper(tail, locals);
             }
@@ -435,8 +461,9 @@ impl UncoverLocals {
                 exprs.iter().for_each(|x| self.value_helper(x, locals));
             }
             Let (bindings, box effect) => {
-                for v in bindings.keys() {
-                    locals.insert(v.to_string());
+                for (k, v) in bindings {
+                    locals.insert(k.to_string());
+                    self.value_helper(v, locals);
                 }
                 self.effect_helper(effect, locals);
             }
@@ -466,8 +493,9 @@ impl UncoverLocals {
                 self.pred_helper(&exprs_slice[last], locals);
             }
             Let (bindings, box pred) => {
-                for v in bindings.keys() {
-                    locals.insert(v.to_string());
+                for (k, v) in bindings {
+                    locals.insert(k.to_string());
+                    self.value_helper(v, locals);
                 }
                 self.pred_helper(pred, locals);
             }
@@ -500,8 +528,9 @@ impl UncoverLocals {
                 exprs.iter().for_each(|x| self.value_helper(x, locals));
             }
             Let (bindings, box v) => {
-                for v in bindings.keys() {
-                    locals.insert(v.to_string());
+                for (k, v) in bindings {
+                    locals.insert(k.to_string());
+                    self.value_helper(v, locals);
                 }
                 self.value_helper(v, locals);
             }
@@ -575,7 +604,7 @@ impl RemoveLet {
             Let (mut bindings, box mut tail) => {
                 let mut exprs = vec![];
                 for (s, val) in bindings.drain() {
-                    exprs.push( set1_scm(Symbol (s), val) );
+                    exprs.push( set1_scm(Symbol (s), self.value_helper(val)) );
                 }
                 tail = self.tail_helper(tail);
                 exprs.push(tail);
@@ -609,7 +638,7 @@ impl RemoveLet {
             Let (mut bindings, box mut pred) => {
                 let mut exprs = vec![];
                 for (s, val) in bindings.drain() {
-                    exprs.push( set1_scm(Symbol (s), val) );
+                    exprs.push( set1_scm(Symbol (s), self.value_helper(val)) );
                 }
                 pred = self.pred_helper(pred);
                 exprs.push(pred);
@@ -647,7 +676,7 @@ impl RemoveLet {
             Let (mut bindings, box mut effect) => {
                 let mut exprs = vec![];
                 for (s, val) in bindings.drain() {
-                    exprs.push( set1_scm(Symbol (s), val) );
+                    exprs.push( set1_scm(Symbol (s), self.value_helper(val)) );
                 }
                 effect = self.effect_helper(effect);
                 exprs.push(effect);
@@ -689,7 +718,7 @@ impl RemoveLet {
             Let (mut bindings, box mut v) => {
                 let mut exprs = vec![];
                 for (s, val) in bindings.drain() {
-                    exprs.push( set1_scm(Symbol (s), val) );
+                    exprs.push( set1_scm(Symbol (s), self.value_helper(val)) );
                 }
                 v = self.value_helper(v);
                 exprs.push( v );
@@ -811,7 +840,7 @@ impl CompileToExpr {
                 return if2(new_pred, new_b1, new_b2); 
             }
             Scheme::Begin (exprs) => {
-                let new_exprs: Vec<_> = exprs.into_iter().map(|x| self.value_helper(x)).collect();
+                let new_exprs: Vec<_> = exprs.into_iter().map(|x| self.effect_helper(x)).collect();
                 return Expr::Begin (new_exprs);
             }
             Scheme::Set (box sym, box val) => {
@@ -847,8 +876,11 @@ impl CompileToExpr {
                 let new_b2 = self.value_helper(b2);
                 return if2(new_pred, new_b1, new_b2);
             }
-            Scheme::Begin (exprs) => {
-                let new_exprs: Vec<_> = exprs.into_iter().map(|x| self.value_helper(x)).collect();
+            Scheme::Begin (mut exprs) => {
+                let value = exprs.pop().unwrap();
+                let value = self.value_helper(value);
+                let mut new_exprs: Vec<_> = exprs.into_iter().map(|x| self.effect_helper(x)).collect();
+                new_exprs.push(value);
                 return Expr::Begin (new_exprs);
             }
             triv => self.scheme_to_expr(triv),
