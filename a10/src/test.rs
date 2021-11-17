@@ -327,11 +327,66 @@ fn compile16() {
 #[test]
 fn compile17() {
     let s = "
-    (letrec ([f$1 (lambda (x.1) x.1)])
-      (let ([v (make-vector '2)])
+    (letrec ([f$1 (lambda (x.1) (+ '1 x.1))])
+      (let ([v.2 (make-vector '2)])
         (begin 
-          (vector-set! v '0 f$1)
-          (vector-set! v '1 '1)
-          ((vector-ref v '0) (vector-ref v '1)))))";
-    test_helper(s, "c17.s", "1");
+          (vector-set! v.2 '0 f$1)
+          (vector-set! v.2 '1 '20)
+          ((vector-ref v.2 '0) (vector-ref v.2 '1)))))";
+    test_helper(s, "c17.s", "21");
+}
+
+#[test]
+fn compile18() {
+    let s = "
+    (letrec ([sum$1 (lambda (x.1 y.2 z.3 w.4)
+                      (+ x.1 (+ y.2 (+ z.3 w.4))))])
+      (let ([a.6 (make-vector '1)])
+        (sum$1 (begin (vector-set! a.6 '0 '1) (vector-ref a.6 '0))
+               (begin (vector-set! a.6 '0 '2) (vector-ref a.6 '0))
+               (begin (vector-set! a.6 '0 '3) (vector-ref a.6 '0))
+               (begin (vector-set! a.6 '0 '4) (vector-ref a.6 '0)))))
+    (letrec ([sum$1 (lambda (x.1 y.2 z.3 w.4)
+                      (+ x.1 (+ y.2 (+ z.3 w.4))))])";
+    test_helper(s, "c18.s", "10");
+}
+
+#[test]
+fn compile19() {
+    let s = "
+    (letrec ([vector-equal?$3 (lambda (vect1.8 vect2.9)
+                                (let ([n.15 (vector-length vect1.8)])
+                                  (if (= (vector-length vect2.9) n.15)
+                                      (vector-equal?$4 vect1.8 vect2.9 (- n.15 '1))
+                                      '0)))]
+             [vector-equal?$4 (lambda (vect1.11 vect2.12 off.10)
+                                (if (< off.10 '0)
+                                    '#t
+                                    (if (eq? (vector-ref vect1.11 off.10)
+                                             (vector-ref vect2.12 off.10))
+                                        (vector-equal?$4 vect1.11 vect2.12 (- off.10 '1))
+                                        '#f)))])
+      (let ([v1.13 (make-vector '5)] [p.20 (cons '() (void))])
+        (begin
+          (vector-set! v1.13 '0 '134)
+          (vector-set! v1.13 '1 '123)
+          (vector-set! v1.13 '2 '503)
+          (vector-set! v1.13 '3 p.20)
+          (vector-set! v1.13 '4 '255)
+          (let ([v2.14 (make-vector '5)])
+            (begin
+              (vector-set! v2.14 '0 '134)
+              (vector-set! v2.14 '1 '123)
+              (vector-set! v2.14 '2 '503)
+              (vector-set! v2.14 '3 p.20)
+              (vector-set! v2.14 '4 '255)
+              (if (eq? (vector-equal?$3 v1.13 v2.14) '#f)
+                  '-100
+                  (if (eq? (begin
+                             (vector-set! v2.14 '3 (cons '() (void)))
+                             (vector-equal?$3 v1.13 v2.14))
+                           '#f)
+                      '200
+                      '100)))))))";
+    test_helper(s, "c19.s", "200");
 }

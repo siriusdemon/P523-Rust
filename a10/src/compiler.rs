@@ -527,7 +527,12 @@ impl UncoverLocals {
                 self.value_helper(b2, locals);
             }
             Begin (exprs) => {
-                exprs.iter().for_each(|x| self.value_helper(x, locals));
+                let exprs_slice = exprs.as_slice();
+                let last = exprs.len() - 1;
+                for i in 0..last {
+                    self.effect_helper(&exprs_slice[i], locals);
+                }
+                self.value_helper(&exprs_slice[last], locals);
             }
             Let (bindings, box v) => {
                 for (k, v) in bindings {
@@ -714,7 +719,10 @@ impl RemoveLet {
                 return if2_scm(new_pred, new_b1, new_b2);
             }
             Begin (mut exprs) => {
-                exprs = exprs.into_iter().map(|x| self.value_helper(x)).collect();
+                let mut value = exprs.pop().unwrap();
+                value = self.value_helper(value);
+                exprs = exprs.into_iter().map(|x| self.effect_helper(x)).collect();
+                exprs.push(value);
                 return Begin (exprs);
             }
             Let (mut bindings, box mut v) => {
