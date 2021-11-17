@@ -419,3 +419,18 @@ fn compile20() {
           (mref$200 s1.10 '8))))";
     test_helper(s, "c20.s", "42");
 }
+
+
+#[test]
+fn compile21() {
+    let s = "
+    (letrec ()
+      (let ([a (cons '1 '2)])
+        a))";
+    test_helper(s, "c22.s", "(1 . 2)");
+    let s = "
+    (letrec ()
+      (let ([a (cons '2 (cons '1 '()))])
+        a))";
+    test_helper(s, "c21.s", "(2 1)");
+}
