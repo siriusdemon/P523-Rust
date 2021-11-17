@@ -19,7 +19,7 @@ use Asm::*;
 // ---------------------------------------------------------------------
 
 const MASK_FIXNUM  :i64 = 0b111;
-const FIXNUM_BITS  :usize = 61;
+const FIXNUM_BITS  :i64 = 61;
 const SHIFT_FIXNUM :i64 = 3;
 const TAG_FIXNUM   :i64 = 0b000;
 
@@ -164,7 +164,7 @@ impl SpecifyRepresentation {
                 let mut bindings = HashMap::new();
                 bindings.insert(tmp.clone(), ptr);
                 let exprs = vec![
-                    mset_scm(Symbol (tmp.clone()), Int64 (VLEN_OFFSET), Int64 (i)),
+                    mset_scm(Symbol (tmp.clone()), Int64 (VLEN_OFFSET), Int64 (i << SHIFT_FIXNUM)),
                     Symbol (tmp),
                 ];
                 return let_scm(bindings, Begin (exprs));
