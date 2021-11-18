@@ -310,9 +310,18 @@ impl NormalizeContext {
                 let relop = prim2_scm("eq?".to_string(), e, quote_scm(Bool (false)));
                 return if2_scm(relop, Bool (false), Bool (true));
             }
-            Prim1 (op, box e) if is_effect_prim(op.as_str()) => panic!("A value is needed, but got call to {}", op),
-            Prim2 (op, box e1, box e2) if is_effect_prim(op.as_str()) => panic!("A value is needed, but got call to {}", op),
-            Prim3 (op, box e1, box e2, box e3) if is_effect_prim(op.as_str()) => panic!("A value is needed, but got call to {}", op),
+            Prim1 (op, box e) if is_effect_prim(op.as_str()) => {
+                let e = prim1_scm(op, self.value_helper(e));
+                return Begin (vec![e, Bool (true)]);
+            }
+            Prim2 (op, box e1, box e2) if is_effect_prim(op.as_str()) => {
+                let e = prim2_scm(op, self.value_helper(e1), self.value_helper(e2));
+                return Begin (vec![e, Bool (true)]);
+            }
+            Prim3 (op, box e1, box e2, box e3) if is_effect_prim(op.as_str()) => {
+                let e = prim3_scm(op, self.value_helper(e1), self.value_helper(e2), self.value_helper(e3));
+                return Begin (vec![e, Bool (true)]);
+            }
             Funcall (box func, mut args) => {
                 let new_func = self.value_helper(func);
                 args = args.into_iter().map(|e| self.value_helper(e)).collect();
@@ -323,12 +332,13 @@ impl NormalizeContext {
             Quote (box Bool (b)) => Bool (b),
             // note that the EmptyList is convert to (true). Because anything if is not #f is (true)
             Quote (box other) => Bool (true),
+            // the same reason as above
+            Void => Bool (true), 
             // is label comparable?
             Symbol (s) => {
                 let relop = prim2_scm("eq?".to_string(), Symbol (s), quote_scm(Bool (false)));
                 return if2_scm(relop, quote_scm(Bool (false)),quote_scm(Bool (true)));
             }
-            // void is not allowed in Predicate
             other => panic!("Invalid predicate {}", other),
         }
     }
@@ -358,20 +368,21 @@ impl NormalizeContext {
             Prim2 (op, box e1, box e2) if is_effect_prim(op.as_str()) => prim2_scm(op, self.value_helper(e1), self.value_helper(e2)),
             Prim3 (op, box e1, box e2, box e3) if is_effect_prim(op.as_str()) => prim3_scm(op, self.value_helper(e1), self.value_helper(e2), self.value_helper(e3)),
             // no-effect group, evaluate its args for effection if any
-            Prim1 (op, box e) => {
-                self.value_helper(e);
-                return Nop;
-            }
+            Prim1 (op, box e) => self.effect_helper(e),
             Prim2 (op, box e1, box e2)  => {
-                self.value_helper(e1);
-                self.value_helper(e2);
-                return Nop;
+                let exprs = vec![
+                    self.effect_helper(e1),
+                    self.effect_helper(e2),
+                ];
+                return make_nopless_begin(exprs);
             }
             Prim3 (op, box e1, box e2, box e3) => {
-                self.value_helper(e1);
-                self.value_helper(e2);
-                self.value_helper(e3);
-                return Nop;
+                let exprs = vec![
+                    self.effect_helper(e1),
+                    self.effect_helper(e2),
+                    self.effect_helper(e3),
+                ];
+                return make_nopless_begin(exprs);
             }
             Funcall (box func, mut args) => {
                 let new_func = self.value_helper(func);
@@ -381,7 +392,7 @@ impl NormalizeContext {
             Quote (box imm) => Nop,
             Symbol (s) => Nop,
             Void => Nop,
-            other => panic!("Invalid Value {}", other),
+            other => panic!("Invalid Effect {}", other),
         }
     }
 }

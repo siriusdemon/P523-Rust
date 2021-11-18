@@ -245,7 +245,6 @@ fn compile15() {
 
 // this case still failed. And I don't know why.
 #[test]
-#[should_panic()]
 fn compile16() {
     let s = "
     (letrec ([alloc$100 (lambda (n.101) (make-vector (div$400 n.101 '8)))]
