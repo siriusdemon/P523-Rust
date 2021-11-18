@@ -85,6 +85,10 @@ fn funcall_scm(func: Scheme, args: Vec<Scheme>) -> Scheme {
     Scheme::Funcall (Box::new(func), args)
 }
 
+fn quote_scm(scm: Scheme) -> Scheme {
+    Scheme::Quote (Box::new(scm))
+}
+
 
 fn is_value_prim(s: &str) -> bool {
     ["+", "-", "*", "car", "cdr", "cons", "make-vector", "vector-length", "vector-ref", "void"].contains(&s)
@@ -96,6 +100,25 @@ fn is_pred_prim(s: &str) -> bool {
 
 fn is_effect_prim(s: &str) -> bool {
     ["set-car!", "set-cdr!", "vector-set!"].contains(&s)
+}
+
+fn make_nopless_begin(exprs: Vec<Scheme>) -> Scheme {
+    use Scheme::*;
+    fn helper(exprs: Vec<Scheme>, collector: &mut Vec<Scheme>) {
+        for e in exprs {
+            if let Begin (vee) = e {
+                helper(vee, collector);
+            } else if let Nop = e {
+                // skip nop
+            } else {
+                collector.push(e);
+            }
+        }
+    }
+    let mut new_exprs = vec![];
+    helper(exprs, &mut new_exprs);
+    if new_exprs.len() == 0 { return Scheme::Nop; }
+    Scheme::Begin (new_exprs)
 }
 
 pub struct ParseScheme {}
@@ -161,6 +184,195 @@ impl LiftLetrec {
             Symbol (s) => Symbol (s),
             Void => Void,
             other => panic!("Invalid Scheme Program {}", other),
+        }
+    }
+}
+
+pub struct NormalizeContext {}
+impl NormalizeContext {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        match scm {
+            Letrec (mut lambdas, box value) => {
+                lambdas = lambdas.into_iter().map(|e| self.helper(e)).collect();
+                return Letrec (lambdas, Box::new(self.helper(value)));
+            }
+            other => panic!("Invalid Scheme Program {}", other), 
+        }
+    }
+
+    fn helper(&self, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        match scm {
+            Lambda (label, args, box value) => Lambda (label, args, Box::new(self.value_helper(value))),
+            value => self.value_helper(value),
+        }
+    }
+
+    fn value_helper(&self, value: Scheme) -> Scheme {
+        use Scheme::*;
+        match value {
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred);
+                let new_b1 = self.value_helper(b1);
+                let new_b2 = self.value_helper(b2);
+                return if2_scm(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                let value = exprs.pop().unwrap();
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e)).collect();
+                exprs.push(self.value_helper(value));
+                return make_nopless_begin(exprs);
+            }
+            Let (mut bindings, box tail) => {
+                let mut new_bindings = HashMap::new();
+                for (k, val) in bindings.drain() {
+                    new_bindings.insert(k, self.value_helper(val));
+                }
+                return let_scm(new_bindings, self.value_helper(tail));
+            }
+            Prim1 (op, box e) if is_value_prim(op.as_str()) => prim1_scm(op, self.value_helper(e)),
+            Prim2 (op, box e1, box e2) if is_value_prim(op.as_str()) => prim2_scm(op, self.value_helper(e1), self.value_helper(e2)),
+            Prim3 (op, box e1, box e2, box e3) if is_value_prim(op.as_str()) => prim3_scm(op, self.value_helper(e1), self.value_helper(e2), self.value_helper(e3)),
+            Prim1 (op, box e) if is_pred_prim(op.as_str()) => {
+                let e = prim1_scm(op, self.value_helper(e));
+                return if2_scm(e, quote_scm(Bool (true)),quote_scm(Bool (false)));
+            }
+            Prim2 (op, box e1, box e2) if is_pred_prim(op.as_str()) => {
+                let e = prim2_scm(op, self.value_helper(e1), self.value_helper(e2));
+                return if2_scm(e, quote_scm(Bool (true)),quote_scm(Bool (false)));
+            }
+            Prim3 (op, box e1, box e2, box e3) if is_pred_prim(op.as_str()) => {
+                let e = prim3_scm(op, self.value_helper(e1), self.value_helper(e2), self.value_helper(e3));
+                return if2_scm(e, quote_scm(Bool (true)),quote_scm(Bool (false)));
+            }
+            Prim1 (op, box e) if is_effect_prim(op.as_str()) => panic!("A value is needed, but got call to {}", op),
+            Prim2 (op, box e1, box e2) if is_effect_prim(op.as_str()) => panic!("A value is needed, but got call to {}", op),
+            Prim3 (op, box e1, box e2, box e3) if is_effect_prim(op.as_str()) => panic!("A value is needed, but got call to {}", op),
+            Funcall (box func, mut args) => {
+                let new_func = self.value_helper(func);
+                args = args.into_iter().map(|e| self.value_helper(e)).collect();
+                return funcall_scm(new_func, args);
+            }
+            Quote (box imm) => Quote (Box::new(imm)),
+            Symbol (s) => Symbol (s),
+            Void => Void,
+            other => panic!("Invalid Value {}", other),
+        }
+    }
+
+    fn pred_helper(&self, pred: Scheme) -> Scheme {
+        use Scheme::*;
+        match pred {
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred);
+                let new_b1 = self.pred_helper(b1);
+                let new_b2 = self.pred_helper(b2);
+                return if2_scm(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                let pred = exprs.pop().unwrap();
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e)).collect();
+                exprs.push(self.pred_helper(pred));
+                return make_nopless_begin(exprs);
+            }
+            Let (mut bindings, box pred) => {
+                let mut new_bindings = HashMap::new();
+                for (k, val) in bindings.drain() {
+                    new_bindings.insert(k, self.value_helper(val));
+                }
+                return let_scm(new_bindings, self.pred_helper(pred));
+            }
+            Prim1 (op, box e) if is_pred_prim(op.as_str()) => prim1_scm(op, self.value_helper(e)),
+            Prim2 (op, box e1, box e2) if is_pred_prim(op.as_str()) => prim2_scm(op, self.value_helper(e1), self.value_helper(e2)),
+            Prim3 (op, box e1, box e2, box e3) if is_pred_prim(op.as_str()) => prim3_scm(op, self.value_helper(e1), self.value_helper(e2), self.value_helper(e3)),
+            Prim1 (op, box e) if is_value_prim(op.as_str()) => {
+                let e = prim1_scm(op, self.value_helper(e));
+                let relop = prim2_scm("eq?".to_string(), e, quote_scm(Bool (false)));
+                return if2_scm(relop, quote_scm(Bool (false)),quote_scm(Bool (true)));
+            }
+            Prim2 (op, box e1, box e2) if is_value_prim(op.as_str()) => {
+                let e = prim2_scm(op, self.value_helper(e1), self.value_helper(e2));
+                let relop = prim2_scm("eq?".to_string(), e, quote_scm(Bool (false)));
+                return if2_scm(relop, quote_scm(Bool (false)),quote_scm(Bool (true)));
+            }
+            Prim3 (op, box e1, box e2, box e3) if is_value_prim(op.as_str()) => {
+                let e = prim3_scm(op, self.value_helper(e1), self.value_helper(e2), self.value_helper(e3));
+                let relop = prim2_scm("eq?".to_string(), e, quote_scm(Bool (false)));
+                return if2_scm(relop, quote_scm(Bool (false)),quote_scm(Bool (true)));
+            }
+            Prim1 (op, box e) if is_effect_prim(op.as_str()) => panic!("A value is needed, but got call to {}", op),
+            Prim2 (op, box e1, box e2) if is_effect_prim(op.as_str()) => panic!("A value is needed, but got call to {}", op),
+            Prim3 (op, box e1, box e2, box e3) if is_effect_prim(op.as_str()) => panic!("A value is needed, but got call to {}", op),
+            Funcall (box func, mut args) => {
+                let new_func = self.value_helper(func);
+                args = args.into_iter().map(|e| self.value_helper(e)).collect();
+                let e = funcall_scm(new_func, args);
+                let relop = prim2_scm("eq?".to_string(), e, quote_scm(Bool (false)));
+                return if2_scm(relop, quote_scm(Bool (false)),quote_scm(Bool (true)));
+            }
+            Quote (box Bool (b)) => Bool (b),
+            // note that the EmptyList is convert to (true). Because anything if is not #f is (true)
+            Quote (box other) => Bool (true),
+            // is label comparable?
+            Symbol (s) => {
+                let relop = prim2_scm("eq?".to_string(), Symbol (s), quote_scm(Bool (false)));
+                return if2_scm(relop, quote_scm(Bool (false)),quote_scm(Bool (true)));
+            }
+            // void is not allowed in Predicate
+            other => panic!("Invalid predicate {}", other),
+        }
+    }
+
+    fn effect_helper(&self, effect: Scheme) -> Scheme {
+        use Scheme::*;
+        match effect {
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.pred_helper(pred);
+                let new_b1 = self.effect_helper(b1);
+                let new_b2 = self.effect_helper(b2);
+                return if2_scm(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                exprs = exprs.into_iter().map(|e| self.effect_helper(e)).collect();
+                return make_nopless_begin(exprs);
+            }
+            Let (mut bindings, box tail) => {
+                let mut new_bindings = HashMap::new();
+                for (k, val) in bindings.drain() {
+                    new_bindings.insert(k, self.value_helper(val));
+                }
+                return let_scm(new_bindings, self.effect_helper(tail));
+            }
+            // effect group
+            Prim1 (op, box e) if is_effect_prim(op.as_str()) => prim1_scm(op, self.value_helper(e)),
+            Prim2 (op, box e1, box e2) if is_effect_prim(op.as_str()) => prim2_scm(op, self.value_helper(e1), self.value_helper(e2)),
+            Prim3 (op, box e1, box e2, box e3) if is_effect_prim(op.as_str()) => prim3_scm(op, self.value_helper(e1), self.value_helper(e2), self.value_helper(e3)),
+            // no-effect group, evaluate its args for effection if any
+            Prim1 (op, box e) => {
+                self.value_helper(e);
+                return Nop;
+            }
+            Prim2 (op, box e1, box e2)  => {
+                self.value_helper(e1);
+                self.value_helper(e2);
+                return Nop;
+            }
+            Prim3 (op, box e1, box e2, box e3) => {
+                self.value_helper(e1);
+                self.value_helper(e2);
+                self.value_helper(e3);
+                return Nop;
+            }
+            Funcall (box func, mut args) => {
+                let new_func = self.value_helper(func);
+                args = args.into_iter().map(|e| self.value_helper(e)).collect();
+                return funcall_scm(new_func, args);
+            }
+            Quote (box imm) => Nop,
+            Symbol (s) => Nop,
+            Void => Nop,
+            other => panic!("Invalid Value {}", other),
         }
     }
 }
@@ -3409,6 +3621,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("ParseScheme", &expr);
     let expr = LiftLetrec{}.run(expr);
     compile_formatter("LiftLetrec", &expr);
+    let expr = NormalizeContext{}.run(expr);
+    compile_formatter("NormalizeContext", &expr);
     let expr = SpecifyRepresentation{}.run(expr);
     compile_formatter("SpecifyRepresentation", &expr);
     let expr = UncoverLocals{}.run(expr);

@@ -26,7 +26,7 @@ fn test_helper(program: &str, filename: &str, expect: &str) {
 }
 
 #[test]
-fn compile21() {
+fn compile1() {
     let s = "
     (let ([a.1 (letrec ([f$0 (lambda () '80)]) (f$0))]
           [b.2 (letrec ([g$1 (lambda () '50)]) (g$1))])
@@ -35,21 +35,31 @@ fn compile21() {
 }
 
 #[test]
-fn compile22() {
+fn compile2() {
     let s = "(let ([x.1 (cons '1 '5)]) (begin (car x.1) x.1))";
     test_helper(s, "c22.s", "(1 . 5)");
 }
 
 #[test]
-fn compile23() {
+fn compile3() {
     let s = "
     (letrec ()
       (let ([a (cons '1 '2)])
         a))";
-    test_helper(s, "c22.s", "(1 . 2)");
+    test_helper(s, "c3.s", "(1 . 2)");
+}
+
+#[test]
+fn compile4() {
+    let s = "(void)";
+    test_helper(s, "c4.s", "#<void>");
+}
+
+#[test]
+fn compile5() {
     let s = "
     (letrec ()
       (let ([a (cons '2 (cons '1 '()))])
         a))";
-    test_helper(s, "c23.s", "(2 1)");
+    test_helper(s, "c5.s", "(2 1)");
 }
