@@ -236,19 +236,28 @@ impl NormalizeContext {
             Prim3 (op, box e1, box e2, box e3) if is_value_prim(op.as_str()) => prim3_scm(op, self.value_helper(e1), self.value_helper(e2), self.value_helper(e3)),
             Prim1 (op, box e) if is_pred_prim(op.as_str()) => {
                 let e = prim1_scm(op, self.value_helper(e));
-                return if2_scm(e, quote_scm(Bool (true)),quote_scm(Bool (false)));
+                return if2_scm(e, quote_scm(Bool (true)), quote_scm(Bool (false)));
             }
             Prim2 (op, box e1, box e2) if is_pred_prim(op.as_str()) => {
                 let e = prim2_scm(op, self.value_helper(e1), self.value_helper(e2));
-                return if2_scm(e, quote_scm(Bool (true)),quote_scm(Bool (false)));
+                return if2_scm(e, quote_scm(Bool (true)), quote_scm(Bool (false)));
             }
             Prim3 (op, box e1, box e2, box e3) if is_pred_prim(op.as_str()) => {
                 let e = prim3_scm(op, self.value_helper(e1), self.value_helper(e2), self.value_helper(e3));
-                return if2_scm(e, quote_scm(Bool (true)),quote_scm(Bool (false)));
+                return if2_scm(e, quote_scm(Bool (true)), quote_scm(Bool (false)));
             }
-            Prim1 (op, box e) if is_effect_prim(op.as_str()) => panic!("A value is needed, but got call to {}", op),
-            Prim2 (op, box e1, box e2) if is_effect_prim(op.as_str()) => panic!("A value is needed, but got call to {}", op),
-            Prim3 (op, box e1, box e2, box e3) if is_effect_prim(op.as_str()) => panic!("A value is needed, but got call to {}", op),
+            Prim1 (op, box e) if is_effect_prim(op.as_str()) => {
+                let e = prim1_scm(op, self.value_helper(e));
+                return Begin (vec![e, Void]);
+            }
+            Prim2 (op, box e1, box e2) if is_effect_prim(op.as_str()) => {
+                let e = prim2_scm(op, self.value_helper(e1), self.value_helper(e2));
+                return Begin (vec![e, Void]);
+            }
+            Prim3 (op, box e1, box e2, box e3) if is_effect_prim(op.as_str()) => {
+                let e = prim3_scm(op, self.value_helper(e1), self.value_helper(e2), self.value_helper(e3));
+                return Begin (vec![e, Void]);
+            }
             Funcall (box func, mut args) => {
                 let new_func = self.value_helper(func);
                 args = args.into_iter().map(|e| self.value_helper(e)).collect();
@@ -289,17 +298,17 @@ impl NormalizeContext {
             Prim1 (op, box e) if is_value_prim(op.as_str()) => {
                 let e = prim1_scm(op, self.value_helper(e));
                 let relop = prim2_scm("eq?".to_string(), e, quote_scm(Bool (false)));
-                return if2_scm(relop, quote_scm(Bool (false)),quote_scm(Bool (true)));
+                return if2_scm(relop, Bool (false), Bool (true));
             }
             Prim2 (op, box e1, box e2) if is_value_prim(op.as_str()) => {
                 let e = prim2_scm(op, self.value_helper(e1), self.value_helper(e2));
                 let relop = prim2_scm("eq?".to_string(), e, quote_scm(Bool (false)));
-                return if2_scm(relop, quote_scm(Bool (false)),quote_scm(Bool (true)));
+                return if2_scm(relop, Bool (false), Bool (true));
             }
             Prim3 (op, box e1, box e2, box e3) if is_value_prim(op.as_str()) => {
                 let e = prim3_scm(op, self.value_helper(e1), self.value_helper(e2), self.value_helper(e3));
                 let relop = prim2_scm("eq?".to_string(), e, quote_scm(Bool (false)));
-                return if2_scm(relop, quote_scm(Bool (false)),quote_scm(Bool (true)));
+                return if2_scm(relop, Bool (false), Bool (true));
             }
             Prim1 (op, box e) if is_effect_prim(op.as_str()) => panic!("A value is needed, but got call to {}", op),
             Prim2 (op, box e1, box e2) if is_effect_prim(op.as_str()) => panic!("A value is needed, but got call to {}", op),
@@ -542,6 +551,7 @@ impl SpecifyRepresentation {
                 let new_v2 = self.value_helper(v2);
                 match op.as_str() {
                     "set-car!" => mset_scm(new_v1, Int64 (CAR_OFFSET), new_v2),
+                    "set-cdr!" => mset_scm(new_v1, Int64 (CDR_OFFSET), new_v2),
                     other => prim2_scm(op, new_v1, new_v2),
                 }
             }

@@ -63,3 +63,70 @@ fn compile5() {
         a))";
     test_helper(s, "c5.s", "(2 1)");
 }
+
+
+#[test]
+fn compile6() {
+    let s = "(letrec () (begin (make-vector '5) '7))";
+    test_helper(s, "c6.s", "7");
+}
+
+#[test]
+fn compile7() {
+    let s = "(if (cdr (cons '#t '#f)) '7 '8)";
+    test_helper(s, "c7.s", "8");
+}
+
+#[test]
+fn compile8() {
+    let s = "(letrec () (if (make-vector '10) '7 '8))";
+    test_helper(s, "c8-1.s", "7");
+    let s = "
+    (letrec () 
+      (let ([v.1 (make-vector '10)])
+        (if (vector-length v.1) '7 '8)))";
+    test_helper(s, "c8-2.s", "7");
+    let s = "
+    (letrec () 
+      (let ([v.1 (make-vector '10)])
+        (begin
+          (vector-set! v.1 '0 '#t)
+          (if (vector-ref v.1 '0) '7 '8))))";
+    test_helper(s, "c8-3.s", "7");
+}
+
+#[test]
+fn compile9() {
+    let s = "    
+    (letrec () 
+      (let ([x.1 (cons '1 '())] [y.2 (cons '1 '())])
+        (eq? x.1 y.2)))";
+    test_helper(s, "c9-1.s", "#f");
+    let s = "(vector? (make-vector '1))";
+    test_helper(s, "c9-2.s", "#t");
+}
+
+#[test]
+fn compile10() {
+    let s = "(letrec () (begin (boolean? '#f) '9))";
+    test_helper(s, "c10-1.s", "9");
+    let s = "    
+    (letrec () 
+      (let ([x.1 (cons '1 '())] [y.2 (cons '1 '())])
+        (begin (eq? x.1 y.2) '10)))";
+    test_helper(s, "c10-2.s", "10");
+    let s = "(letrec () (begin (null? '()) '15))";
+    test_helper(s, "c10-3.s", "15");
+    let s = "(letrec () (begin (pair? (cons '1 '())) '20))";
+    test_helper(s, "c10-4.s", "20");
+}
+
+#[test]
+fn compile11() {
+    let s = "(letrec () (vector-set! (make-vector '4) '0 '10))";
+    test_helper(s, "c11-1.s", "#<void>");
+    let s = "(letrec () (set-car! (cons '1 '2) '10))";
+    test_helper(s, "c11-2.s", "#<void>");
+    let s = "(letrec () (set-cdr! (cons '1 '2) '14))";
+    test_helper(s, "c11-3.s", "#<void>");
+}
