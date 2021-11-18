@@ -255,3 +255,54 @@ fn compile14() {
                        x.1000)))))))))";
     test_helper(s, "c14.s", "0");
 }
+
+#[test]
+fn compile15() {
+    let s = "    
+    (let ([v1.13 (make-vector '5)] [p.20 (cons '() (void))])
+      (begin
+        (vector-set! v1.13 '0 '134)
+        (vector-set! v1.13 '1 '123)
+        (vector-set! v1.13 '2 '503)
+        (vector-set! v1.13 '3 p.20)
+        (vector-set! v1.13 '4 '255)
+        (let ([v2.14 (make-vector '5)])
+          (begin
+            (vector-set! v2.14 '0 '134)
+            (vector-set! v2.14 '1 '123)
+            (vector-set! v2.14 '2 '503)
+            (vector-set! v2.14 '3 p.20)
+            (vector-set! v2.14 '4 '255)
+            (letrec ([vector-equal?$3 (lambda (vect1.8 vect2.9)
+                                        (let ([n.15 (vector-length vect1.8)])
+                                          (if (= (vector-length vect2.9) n.15)
+                                              (vector-equal?$4 vect1.8 vect2.9 (- n.15 '1))
+                                              '0)))]
+                     [vector-equal?$4 (lambda (vect1.11 vect2.12 off.10)
+                                        (if (< off.10 '0)
+                                            '#t
+                                            (if (eq? (vector-ref vect1.11 off.10)
+                                                     (vector-ref vect2.12 off.10))
+                                                (vector-equal?$4 vect1.11 vect2.12 (- off.10 '1))
+                                                '#f)))])
+              (if (eq? (vector-equal?$3 v1.13 v2.14) '#f)
+                  '-100
+                  (if (eq? (begin
+                             (vector-set! v2.14 '3 (cons '() (void)))
+                             (vector-equal?$3 v1.13 v2.14))
+                           '#f)
+                      '200
+                      '100)))))))";
+    test_helper(s, "c15.s", "200");
+}
+
+#[test]
+fn compile16() {
+    let s = "
+    (letrec ([length$3 (lambda (ptr.6)
+                         (if (null? ptr.6)
+                             '0
+                             (+ '1 (length$3 (cdr ptr.6)))))])
+      (length$3 (cons '5 (cons '10 (cons '11 (cons '5 (cons '15 '())))))))";
+    test_helper(s, "c16.s", "5");
+}
