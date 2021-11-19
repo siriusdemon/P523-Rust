@@ -306,3 +306,12 @@ fn compile16() {
       (length$3 (cons '5 (cons '10 (cons '11 (cons '5 (cons '15 '())))))))";
     test_helper(s, "c16.s", "5");
 }
+
+#[test]
+fn compile17() {
+    let s = "
+    (let ([x.1 '3])
+      (letrec ([f.2 (lambda () x.1)])
+        (f.2)))";
+    test_helper(s, "c17.s", "3");
+}
