@@ -3,7 +3,6 @@ use std::fs::File;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::vec::IntoIter;
-use uuid::Uuid;
 
 use crate::syntax::{Scheme, Expr, Asm, ConflictGraph, Frame};
 use crate::parser::{Scanner, Parser};
@@ -193,9 +192,9 @@ impl SpecifyRepresentation {
                     other => Prim1 (op, Box::new(new_value))
                 }
             }
-            Prim2 (op, box Quote (box Int64 (i)), box e) | Prim2 (op, box e, box Quote (box Int64 (i))) if op.as_str() == "*" => {
+            Prim2 (op, box Quote (box Int64 (i)), box e) | Prim2 (op, box e, box Quote (box Int64 (i))) if op.as_str() == "*"  => {
                 let new_e = self.value_helper(e); 
-                let new_i = Int64 (i >> SHIFT_FIXNUM);
+                let new_i = Int64 (i);  // just do nothing for this integer
                 return prim2_scm(op, new_e, new_i);
             }
             Prim2 (op, box e, box Quote (box Int64 (i))) if op.as_str() == "vector-ref" => {
@@ -277,9 +276,7 @@ impl SpecifyRepresentation {
             Prim3 (op, box v1, box Quote (box Int64 (i)), box v3) if op.as_str() == "vector-set!" => {
                 let new_v1 = self.value_helper(v1);
                 let new_v3 = self.value_helper(v3);
-                println!("vector-set index {}", i);
                 let n = (i << ALIGN_SHIFT) + VDATA_OFFSET;
-                println!("vector-set index ajust {}", n);
                 return mset_scm(new_v1, Int64 (n), new_v3);
             }
             Prim3 (op, box v1, box v2, box v3) if is_effect_prim(op.as_str()) => {
@@ -967,9 +964,13 @@ fn fv_to_index(fv: &str) -> i64 {
 }
 
 fn gensym(prefix: &str) -> String {
-    let uid = &Uuid::new_v4().to_string()[..8];
+    // When running test, data race happens
+    static mut counter :usize = 5000;
     let mut s = String::from(prefix);
-    s.push_str(uid);
+    unsafe {
+        s.push_str(&counter.to_string());
+        counter += 1;
+    }
     return s;
 }
 
@@ -2938,11 +2939,11 @@ impl ExposeBasicBlocks {
             If (box Bool(true), box b1, _) => self.tail_helper(b1, new_lambdas),
             If (box Bool(false), _, box b2) => self.tail_helper(b2, new_lambdas),
             If (box pred, box b1, box b2) => {
-                let lab1 = self.gensym();
+                let lab1 = gen_label();
                 let new_b1 = self.tail_helper(b1, new_lambdas); 
                 self.add_binding(&lab1, new_b1, new_lambdas);
 
-                let lab2 = self.gensym();
+                let lab2 = gen_label();
                 let new_b2 = self.tail_helper(b2, new_lambdas);
                 self.add_binding(&lab2, new_b2, new_lambdas);
 
@@ -2965,11 +2966,11 @@ impl ExposeBasicBlocks {
             Bool (true) => make_funcall(lab1.to_string(), vec![]),
             Bool (false) => make_funcall(lab2.to_string(), vec![]),
             If (box pred, box br1, box br2) => {
-                let new_lab1 = self.gensym();
+                let new_lab1 = gen_label();
                 let new_br1 = self.pred_helper(br1, lab1, lab2, new_lambdas);
                 self.add_binding(&new_lab1, new_br1, new_lambdas);
 
-                let new_lab2 = self.gensym();
+                let new_lab2 = gen_label();
                 let new_br2 = self.pred_helper(br2, lab1, lab2, new_lambdas);
                 self.add_binding(&new_lab2, new_br2, new_lambdas);
                 
@@ -2991,14 +2992,14 @@ impl ExposeBasicBlocks {
             If (box Bool(false),  _, box b2) => self.effect_helper(b2, tail, new_lambdas),
             If (box pred, box b1, box b2) => {
                 // the join blocks
-                let lab_tail = self.gensym();
+                let lab_tail = gen_label();
                 self.add_binding(&lab_tail, tail, new_lambdas);
                 // first branch, jump to the join block
-                let lab1 = self.gensym();
+                let lab1 = gen_label();
                 let new_b1 = self.effect_helper(b1, make_funcall(lab_tail.clone(), vec![]), new_lambdas);
                 self.add_binding(&lab1, new_b1, new_lambdas);
                 // second branch, jump to the join block too
-                let lab2 = self.gensym();
+                let lab2 = gen_label();
                 let new_b2 = self.effect_helper(b2, make_funcall(lab_tail, vec![]), new_lambdas);
                 self.add_binding(&lab2, new_b2, new_lambdas);
                 // since a single expr seq break into several blocks, an effect turn into a tail.
@@ -3018,12 +3019,6 @@ impl ExposeBasicBlocks {
         new_lambdas.push(lambda);        
     }
 
-    fn gensym(&self) -> String {
-        let uid = &Uuid::new_v4().to_string()[..8];
-        let mut s = String::from("tmp$");
-        s.push_str(uid);
-        return s;
-    }
 }
 
 pub struct OptimizeJump {}

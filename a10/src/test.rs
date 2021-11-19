@@ -458,32 +458,50 @@ fn compile23() {
                                   [meths.4 (alloc$100 (* '3 '8))]
                                   [stack.2 (alloc$100 (* '3 '8))])
                               (begin
-                                (mset!$300 meths.4 '0 stack-push$2)
-                                (mset!$300 meths.4 '8 stack-pop$3)
-                                (mset!$300 meths.4 '16 stack-top$4)
-                                (mset!$300 stack.2 '0 meths.4)
-                                (mset!$300 stack.2 '8 '0)
                                 (mset!$300 stack.2 '16 store.3)
-                                stack.2)))]
-             [invoke$1 (lambda (obj.5 meth-idx.6)
-                         (mref$200 (mref$200 obj.5 '0) (* meth-idx.6 '8)))]
-             [stack-push$2 (lambda (self.7 val.8)
-                             (begin
-                               (mset!$300 (mref$200 self.7 '16) 
-                                      (* (mref$200 self.7 '8) '8)
-                                      val.8)
-                               (mset!$300 self.7 '8 (+ (mref$200 self.7 '8) '1))
-                               self.7))]
-             [stack-pop$3 (lambda (self.9)
-                            (begin
-                              (mset!$300 self.9 '8 (- (mref$200 '8 self.9) '1))
-                              (mref$200 (mref$200 self.9 '16) 
-                                    (* (mref$200 self.9 '8) '8))))]
-             [stack-top$4 (lambda (self.209)
-                            (mref$200 (mref$200 self.209 '16) 
-                                  (* (- (mref$200 '8 self.209) '1) '8)))])
+                                stack.2)))])
       (let ([s1.10 (stack-new$0 '10)])
         (begin
-          ((invoke$1 s1.10 '0) s1.10 '10))))";
-    test_helper(s, "c16.s", "0");
+          (mset!$300 (mref$200 s1.10 '16) '0 '10)
+          (mref$200 (mref$200 s1.10 '16) '0)
+        )))";
+    test_helper(s, "c23.s", "10");
+}
+
+#[test]
+fn compile24() {
+    let s = "
+    (letrec ()
+      (let ([store.1 (make-vector '2)]
+            [stack.2 (make-vector '1)])
+        (begin
+            (vector-set! store.1 '0 '10)
+            (vector-set! stack.2 '0 store.1)
+            (vector-set! store.1 '1 '42)
+            (vector-ref (vector-ref stack.2 '0) '1))))";
+    test_helper(s, "c24.s", "42");
+}
+
+
+#[test]
+fn compile25() {
+    let s = "
+    (letrec ([stack-new$0 (lambda (size.1)
+                            (let ([store.3 (make-vector size.1)]
+                                  [meths.4 (make-vector '3)]
+                                  [stack.2 (make-vector '3)])
+                              (begin
+                                (vector-set! meths.4 '0 '2)
+                                (vector-set! meths.4 '1 '3)
+                                (vector-set! meths.4 '2 '4)
+                                (vector-set! stack.2 '0 meths.4)
+                                (vector-set! stack.2 '1 '0)
+                                (vector-set! stack.2 '2 store.3)
+                                stack.2)))])
+      (let ([s1.10 (stack-new$0 '10)])
+        (begin
+          (vector-set! (vector-ref s1.10 '2) '0 '10)
+          (vector-ref (vector-ref s1.10 '2) '0)
+        )))";
+    test_helper(s, "c25.s", "10");
 }

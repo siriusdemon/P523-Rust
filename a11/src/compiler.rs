@@ -486,7 +486,7 @@ impl SpecifyRepresentation {
             }
             Prim2 (op, box Quote (box Int64 (i)), box e) | Prim2 (op, box e, box Quote (box Int64 (i))) if op.as_str() == "*" => {
                 let new_e = self.value_helper(e); 
-                let new_i = Int64 (i >> SHIFT_FIXNUM);
+                let new_i = Int64 (i);
                 return prim2_scm(op, new_e, new_i);
             }
             Prim2 (op, box e, box Quote (box Int64 (i))) if op.as_str() == "vector-ref" => {
