@@ -70,7 +70,7 @@ impl Scanner {
             }
             ';' => {
                 i = i + 1;  // skip ;
-                while self.expr[i] != '\n' {
+                while i < self.expr.len() && self.expr[i] != '\n' {
                     i = i + 1;
                 }
                 *col = 0;
