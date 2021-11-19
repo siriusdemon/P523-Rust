@@ -132,6 +132,15 @@ impl ParseScheme {
 }
 
 
+pub struct UncoverFree {}
+impl UncoverFree {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        
+    }
+}
+
+
 pub struct LiftLetrec {}
 impl LiftLetrec {
     pub fn run(&self, scm: Scheme) -> Scheme {

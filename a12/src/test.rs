@@ -315,3 +315,14 @@ fn compile17() {
         (f.2)))";
     test_helper(s, "c17.s", "3");
 }
+
+#[test]
+fn compile18() {
+    let s = "    
+    (letrec ([mult.2 (lambda (n.4)
+                       (letrec ([anon.6 (lambda (m.5) (* n.4 m.5))])
+                         anon.6))]
+             [succ.1 (lambda (n.3) (+ n.3 '1))])
+      (- (* '4 '5) ((mult.2 (succ.1 '3)) (succ.1 '4))))";
+    test_helper(s, "c18.s", "0");
+}
