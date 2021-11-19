@@ -39,7 +39,7 @@ const MASK_PROC        :i64 = 0b111;
 const TAG_PROC         :i64 = 0b010;
 const PROC_CODE_OFFSET :i64 = 0 - TAG_PROC;
 const PROC_DATA_OFFSET :i64 = 8 - TAG_PROC;
-
+const DISP_PDATA       :i64 = 8;
 
 const MASK_BOOL :i64 = 0b11110111;
 const TAG_BOOL  :i64 = 0b00000110;
