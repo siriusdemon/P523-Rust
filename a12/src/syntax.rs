@@ -36,6 +36,7 @@ pub enum Scheme {
     Locals(HashSet<String>, Box<Scheme>),
     Let(HashMap<String, Scheme>, Box<Scheme>),
     Lambda(Vec<String>, Box<Scheme>),
+    Free(Vec<String>, Box<Scheme>),
     Begin(Vec<Scheme>),
     Prim1(String, Box<Scheme>),
     Prim2(String, Box<Scheme>, Box<Scheme>),
@@ -78,6 +79,10 @@ impl fmt::Display for Scheme {
                 let s = format!("(lambda ({}) {})", seqs_s, body);
                 write!(f, "{}", s)
             },
+            Free (fvars, box tail) => {
+                let s = seqs_formatter("free", fvars.iter(), " ", tail);
+                write!(f, "{}", s)
+            }
             Let (bindings, box tail) => {
                 let seqs: Vec<String> = bindings.iter().map(|(k, v)| format!("[{} {}]", k, v)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();

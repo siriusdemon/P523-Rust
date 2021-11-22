@@ -140,84 +140,125 @@ impl ParseScheme {
 }
 
 
-// pub struct UncoverFree {}
-// impl UncoverFree {
-//     pub fn run(&self, scm: Scheme) -> Scheme {
-//         return self.uncover_free(scm);
-//     }
+pub struct UncoverFree {}
+impl UncoverFree {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        let (fset, scm) = self.uncover_free(scm);
+        return scm;
+    }
 
-//     fn uncover_free(&self, scm: Scheme) -> (HashSet<String>, Scheme) {
-//         use Scheme::*;
-//         match scm {
-//             Symbol (s) => {
-//                 let mut free = HashSet::new();
-//                 free.insert(s.clone());
-//                 return (free, Symbol (s));
-//             }
-//             Quote (box imm) => {
-//                 return (HashSet::new(), Quote (Box::new(imm));
-//             }
-//             If (box pred, box b1, box b2) => {
-//                 let (pf, pred) = self.uncover_free(pred);
-//                 let (bf1, b1) = self.uncover_free(b1);
-//                 let (bf2, b2) = self.uncover_free(b2);
-//                 let new_set = self.union_freeset(vec![pf, bf1, bf2]);
-//                 return (new_set, if2_scm(pred, b1, b2));
-//             }
-//             Begin (mut exprs) => {
-//                 let mut sets = vec![];
-//                 let mut new_exprs = vec![];
-//                 for e in exprs.into_iter() {
-//                     let (fset, e) = self.uncover_free(e);
-//                     sets.push(fset);
-//                     new_exprs.push(e);
-//                 }
-//                 let new_set = self.union_freeset(sets);
-//                 return (new_set, Begin (new_exprs));
-//             }
-//             Let (mut bindings, box e) => {
-//                 let mut new_bindings = HashMap::new();
-//                 let mut sets = vec![];
-//                 for (k, v) in bindings.drain() {
-//                     let (fset, v) = self.uncover_free(v);
-//                     sets.push(fset);
-//                     new_bindings.insert(k, v);
-//                 }
-//                 let (fset, e) = self.uncover_free(e);
-//                 sets.push(fset);
-//                 let new_set = self.union_freeset(sets);
-//                 for k in new_bindings.keys() {
-//                     new_set.remove(k);
-//                 }
-//                 return (new_set, let_scm(new_bindings, e);
-//             }
-//             Letrec (mut lambdas, e) => {
-//                 let mut sets = vec![];
-//                 lambdas = lambdas.into_iter().map(|e| {
-//                     let (fset, e) = self.uncover_free(e);
-//                     sets.push(fset);
-//                     e
-//                 }).collect();
-//                 let (fset, e) = self.uncover_free(e);
-//                 sets.push(fset);
-//                 let new_set = self.union_freeset(sets);
-//                 let ()
+    fn uncover_free(&self, scm: Scheme) -> (HashSet<String>, Scheme) {
+        use Scheme::*;
+        match scm {
+            Symbol (s) => {
+                let mut free = HashSet::new();
+                free.insert(s.clone());
+                return (free, Symbol (s));
+            }
+            Quote (box imm) => {
+                return (HashSet::new(), Quote (Box::new(imm)));
+            }
+            If (box pred, box b1, box b2) => {
+                let (pf, pred) = self.uncover_free(pred);
+                let (bf1, b1) = self.uncover_free(b1);
+                let (bf2, b2) = self.uncover_free(b2);
+                let new_set = self.union_freeset(vec![pf, bf1, bf2]);
+                return (new_set, if2_scm(pred, b1, b2));
+            }
+            Begin (mut exprs) => {
+                let mut sets = vec![];
+                let mut new_exprs = vec![];
+                for e in exprs.into_iter() {
+                    let (fset, e) = self.uncover_free(e);
+                    sets.push(fset);
+                    new_exprs.push(e);
+                }
+                let new_set = self.union_freeset(sets);
+                return (new_set, Begin (new_exprs));
+            }
+            Let (mut bindings, box e) => {
+                let mut new_bindings = HashMap::new();
+                let mut sets = vec![];
+                for (k, v) in bindings.drain() {
+                    let (fset, v) = self.uncover_free(v);
+                    sets.push(fset);
+                    new_bindings.insert(k, v);
+                }
+                let (fset, e) = self.uncover_free(e);
+                sets.push(fset);
+                let mut new_set = self.union_freeset(sets);
+                for k in new_bindings.keys() {
+                    new_set.remove(k);
+                }
+                return (new_set, let_scm(new_bindings, e));
+            }
+            Letrec (mut lambdas, box e) => {
+                let mut new_bindings = HashMap::new();
+                let mut sets = vec![];
+                for (k, v) in lambdas.drain() {
+                    let (fset, v) = self.uncover_free(v);
+                    sets.push(fset);
+                    new_bindings.insert(k, v);
+                }
+                let (fset, e) = self.uncover_free(e);
+                sets.push(fset);
+                let mut new_set = self.union_freeset(sets);
+                for k in new_bindings.keys() {
+                    new_set.remove(k);
+                }
+                return (new_set, letrec_scm(new_bindings, e));
+            }
+            Prim1 (op, box e) => {
+                let (fset, e) = self.uncover_free(e);
+                return (fset, prim1_scm(op, e));
+            }
+            Prim2 (op, box e1, box e2) => {
+                let (fset1, e1) = self.uncover_free(e1);
+                let (fset2, e2) = self.uncover_free(e2);
+                let new_set = self.union_freeset(vec![fset1, fset2]);
+                return (new_set, prim2_scm(op, e1, e2));
+            }
+            Prim3 (op, box e1, box e2, box e3) => {
+                let (fset1, e1) = self.uncover_free(e1);
+                let (fset2, e2) = self.uncover_free(e2);
+                let (fset3, e3) = self.uncover_free(e3);
+                let new_set = self.union_freeset(vec![fset1, fset2, fset3]);
+                return (new_set, prim3_scm(op, e1, e2, e3));
+            }
+            Funcall (box func, mut args) => {
+                let (fset1, func) = self.uncover_free(func);
+                let mut sets = vec![fset1];
+                args = args.into_iter().map(|a| {
+                    let (fset, a) = self.uncover_free(a);
+                    sets.push(fset);
+                    a
+                }).collect();
+                let new_set = self.union_freeset(sets);
+                return (new_set, funcall_scm(func, args));
+            }
+            Lambda (args, box body) => {
+                let (mut fset, body) = self.uncover_free(body);
+                for a in args.iter() {
+                    fset.remove(a);
+                }
+                let freevars: Vec<_> = fset.iter().map(|e| e.to_string()).collect();
+                let free = Free (freevars, Box::new(body));
+                return (fset, lambda_scm(args, free));
+            }
+            e => panic!("Invalid Program {}", e),
+        }
+    }
 
-//             }
-
-//         }
-//     }
-
-//     fn union_freeset(&self, sets: Vec<HashSet<String>>) -> HashSet<String> {
-//         let mut new_set = HashSet::new();
-//         for set in sets {
-//             for e in set.drain() {
-//                 new_set.insert(e);
-//             }
-//         }
-//         return new_set;
-//     }
-// }
+    fn union_freeset(&self, sets: Vec<HashSet<String>>) -> HashSet<String> {
+        let mut new_set = HashSet::new();
+        for mut set in sets {
+            for e in set.drain() {
+                new_set.insert(e);
+            }
+        }
+        return new_set;
+    }
+}
 
 
 pub struct LiftLetrec {}
@@ -3725,6 +3766,8 @@ pub fn everybody_home(expr: &Expr) -> bool {
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseScheme{}.run(s);
     compile_formatter("ParseScheme", &expr);
+    let expr = UncoverFree{}.run(expr);
+    compile_formatter("UncoverFree", &expr);
     let expr = LiftLetrec{}.run(expr);
     compile_formatter("LiftLetrec", &expr);
     let expr = NormalizeContext{}.run(expr);
