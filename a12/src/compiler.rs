@@ -156,7 +156,7 @@ impl UncoverFree {
                 return (free, Symbol (s));
             }
             Quote (box imm) => {
-                return (HashSet::new(), Quote (Box::new(imm)));
+                return (HashSet::new(), quote_scm(imm));
             }
             If (box pred, box b1, box b2) => {
                 let (pf, pred) = self.uncover_free(pred);
@@ -260,6 +260,89 @@ impl UncoverFree {
     }
 }
 
+
+pub struct ConvertClosure {}
+impl ConvertClosure {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        self.convert_closure(scm)
+    }
+
+    fn convert_closure(&self, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        match scm {
+            Symbol (s) => Symbol (s), 
+            Quote (box imm) => quote_scm(imm),
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.convert_closure(pred);
+                let new_b1 = self.convert_closure(b1);
+                let new_b2 = self.convert_closure(b2);
+                return if2_scm(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                exprs = exprs.into_iter().map(|e| self.convert_closure(e)).collect();
+                return Begin (exprs);
+            }
+            Let (mut bindings, box value) => {
+                let mut new_bindings = HashMap::new();
+                for (k, v) in bindings.into_iter() {
+                    new_bindings.insert(k, self.convert_closure(v));
+                }
+                return let_scm(new_bindings, self.convert_closure(value));
+            }
+            Letrec (mut bindings, box value) => {
+                let mut new_bindings = HashMap::new();
+                let mut clos = vec![];
+                for (k, v) in bindings.drain() {
+                    if let Lambda (mut args, box Free (mut fvars, box body)) = v {
+                        let label = k.replace(".", "$");                        // uvar to label
+                        clos.push((k.clone(), label.clone(), fvars.clone()));   // prepare closures
+                        let new_body = self.convert_closure(body);
+                        args.push(k.clone());                                   // cp as argument
+                        fvars.push(k);                                          // cp into bind-free form
+                        let new_lambda = lambda_scm(args, Bindfree (fvars, Box::new(new_body)));
+                        new_bindings.insert(label, new_lambda);
+                    } else {
+                        unreachable!();
+                    }
+                }
+                // here, lambdas are ready and closures is ready too.
+                let new_value = self.convert_closure(value);
+                let closures = Closures (clos, Box::new(new_value));
+                return letrec_scm(new_bindings, closures);
+            }
+            Prim1 (op, box e) => {
+                let e = self.convert_closure(e);
+                return prim1_scm(op, e);
+            }
+            Prim2 (op, box e1, box e2) => {
+                let e1 = self.convert_closure(e1);
+                let e2 = self.convert_closure(e2);
+                return prim2_scm(op, e1, e2);
+            }
+            Prim3 (op, box e1, box e2, box e3) => {
+                let e1 = self.convert_closure(e1);
+                let e2 = self.convert_closure(e2);
+                let e3 = self.convert_closure(e3);
+                return prim3_scm(op, e1, e2, e3);
+            }
+            Funcall (box func, mut args) => {
+                args = args.into_iter().map(|x| self.convert_closure(x)).collect();
+                // I choose to add cp as the last argument
+                if let Symbol (s) = &func {
+                    args.push(Symbol (s.to_string())); 
+                    return funcall_scm(func, args);
+                } 
+                // func is a complex expression
+                let tmp = gen_uvar();
+                let mut new_bindings = HashMap::new();
+                new_bindings.insert(tmp.clone(), self.convert_closure(func));
+                args.push(Symbol (tmp.clone()));
+                return let_scm(new_bindings, funcall_scm(Symbol (tmp), args));
+            }
+            e => e,
+        }
+    }
+}
 
 pub struct LiftLetrec {}
 impl LiftLetrec {
@@ -3768,6 +3851,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("ParseScheme", &expr);
     let expr = UncoverFree{}.run(expr);
     compile_formatter("UncoverFree", &expr);
+    let expr = ConvertClosure{}.run(expr);
+    compile_formatter("ConvertClosure", &expr);
     let expr = LiftLetrec{}.run(expr);
     compile_formatter("LiftLetrec", &expr);
     let expr = NormalizeContext{}.run(expr);

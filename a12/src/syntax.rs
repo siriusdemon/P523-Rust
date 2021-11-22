@@ -37,6 +37,8 @@ pub enum Scheme {
     Let(HashMap<String, Scheme>, Box<Scheme>),
     Lambda(Vec<String>, Box<Scheme>),
     Free(Vec<String>, Box<Scheme>),
+    Bindfree(Vec<String>, Box<Scheme>),
+    Closures(Vec<(String, String, Vec<String>)>, Box<Scheme>),
     Begin(Vec<Scheme>),
     Prim1(String, Box<Scheme>),
     Prim2(String, Box<Scheme>, Box<Scheme>),
@@ -81,6 +83,22 @@ impl fmt::Display for Scheme {
             },
             Free (fvars, box tail) => {
                 let s = seqs_formatter("free", fvars.iter(), " ", tail);
+                write!(f, "{}", s)
+            }
+            Bindfree (fvars, box tail) => {
+                let s = seqs_formatter("bind-free", fvars.iter(), " ", tail);
+                write!(f, "{}", s)
+            }
+            Closures (clos, box tail) => {
+                let seqs: Vec<_> = clos.iter().map(|(uvar, label, fvars)| {
+                    let seqs_f: Vec<String> = fvars.iter().map(|e| format!("{}", e)).collect();
+                    let seqs_fref: Vec<&str> = seqs_f.iter().map(|s| s.as_ref()).collect();
+                    let seqs_fs = seqs_fref.join(" ");
+                    format!("[{} {} {}]", uvar, label, seqs_fs)
+                }).collect();
+                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+                let seqs_s = seqs_ref.join("\n");
+                let s = format!("(closures ({}) {})", seqs_s, tail);
                 write!(f, "{}", s)
             }
             Let (bindings, box tail) => {
