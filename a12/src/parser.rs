@@ -159,6 +159,7 @@ impl Parser {
         let top = self.top().unwrap().token.as_str();
         match top {
             "letrec" => self.parse_letrec(),
+            "lambda" => self.parse_lambda(),
             "begin" => self.parse_begin(),
             "set!" => self.parse_set(),
             "if" => self.parse_if(),
@@ -181,19 +182,37 @@ impl Parser {
     fn parse_letrec(&mut self) -> Scheme {
         let _letrec = self.remove_top();
         let _lambda_left = self.remove_top();
-        let mut lambdas = vec![];
+        let mut bindings = HashMap::new();
         while let Some(ref t) = self.top() {
             if t.token.as_str() != ")" {
-                let lambda = self.parse_lambda();
-                lambdas.push(lambda);
+                let (k, lambda) = self.parse_binding();
+                bindings.insert(k, lambda);
             } else {
                 let _lambda_right = self.remove_top();
                 let body = self.parse_expr();
                 let _letrec_right = self.remove_top();
-                return Scheme::Letrec(lambdas, Box::new(body));
+                return Scheme::Letrec(bindings, Box::new(body));
             }
         }
         panic!("Parse letrec, unexpected eof");
+    }
+
+    fn parse_lambda(&mut self) -> Scheme {
+        let _lambda = self.remove_top().unwrap();
+        let _args_left = self.remove_top();
+        let mut args = vec![];
+        while let Some(ref t) = self.top() {
+            if t.token.as_str() != ")" {
+                let arg = self.remove_top().unwrap().token;
+                args.push(arg);
+            } else {
+                let _args_right = self.remove_top();
+                let tail = self.parse_expr();
+                let _right = self.remove_top();
+                return Scheme::Lambda(args, Box::new(tail));
+            }
+        } 
+        panic!("Parse Lambda, unexpected eof");
     }
 
 
@@ -228,7 +247,7 @@ impl Parser {
         let mut bindings = HashMap::new();
         while let Some(ref t) = self.top() {
             if t.token.as_str() != ")" {
-                let (var, val) = self.parse_let_binding();
+                let (var, val) = self.parse_binding();
                 bindings.insert(var, val);
             } else {
                 let _binding_right = self.remove_top();
@@ -240,7 +259,7 @@ impl Parser {
         panic!("Parse let, unexpected eof");
     }
 
-    fn parse_let_binding(&mut self) -> (String, Scheme) {
+    fn parse_binding(&mut self) -> (String, Scheme) {
         let _left = self.remove_top();
         let var = self.remove_top().unwrap().token;
         let val = self.parse_expr();
@@ -249,31 +268,6 @@ impl Parser {
     }
 
 
-    fn parse_lambda(&mut self) -> Scheme {
-        let _left = self.remove_top();
-        // here, I choose to change any `-` to `_` to avoid annoying GAS
-        let label = self.remove_top().unwrap().token;
-        // (optional) verify label
-        let _lambda_left = self.remove_top();
-        let lambda = self.remove_top().unwrap();
-        assert!(lambda.token.as_str() == "lambda", 
-            "Expect lambda, got {} at line {} col {}", lambda.token, lambda.line, lambda.col);
-        let _args_left = self.remove_top();
-        let mut args = vec![];
-        while let Some(ref t) = self.top() {
-            if t.token.as_str() != ")" {
-                let arg = self.remove_top().unwrap().token;
-                args.push(arg);
-            } else {
-                let _args_right = self.remove_top();
-                let tail = self.parse_expr();
-                let _lambda_right = self.remove_top();
-                let _right = self.remove_top();
-                return Scheme::Lambda(label, args, Box::new(tail));
-            }
-        } 
-        panic!("Parse Lambda, unexpected eof");
-    }
 
     fn parse_funcall(&mut self) -> Scheme {
         let func = self.parse_expr();

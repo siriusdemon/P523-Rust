@@ -32,10 +32,10 @@ fn seqs_formatter<E: fmt::Display>(form: &str, seqs: impl Iterator<Item=E>,  joi
 // ---------------------- Scheme / Expr / Asm --------------------------------------
 #[derive(Debug)]
 pub enum Scheme {
-    Letrec(Vec<Scheme>, Box<Scheme>),
+    Letrec(HashMap<String, Scheme>, Box<Scheme>),
     Locals(HashSet<String>, Box<Scheme>),
     Let(HashMap<String, Scheme>, Box<Scheme>),
-    Lambda(String, Vec<String>, Box<Scheme>),
+    Lambda(Vec<String>, Box<Scheme>),
     Begin(Vec<Scheme>),
     Prim1(String, Box<Scheme>),
     Prim2(String, Box<Scheme>, Box<Scheme>),
@@ -60,23 +60,26 @@ impl fmt::Display for Scheme {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Scheme::*;
         match self {
-            Letrec (lambdas, box body) => {
-                let s = seqs_formatter("letrec", lambdas.iter(), "\n", body);
+            Letrec (bindings, box body) => {
+                let seqs: Vec<String> = bindings.iter().map(|(k, v)| format!("[{} {}]", k, v)).collect();
+                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
+                let seqs_s = seqs_ref.join(" ");
+                let s = format!("(letrec ({})\n {})", seqs_s, body);
                 write!(f, "{}", s)
             },
             Locals (uvars, box tail) => {
                 let s = seqs_formatter("locals", uvars.iter(), " ", tail);
                 write!(f, "{}", s)
             }
-            Lambda (label, args, box body) => {
+            Lambda (args, box body) => {
                 let seqs: Vec<String> = args.iter().map(|e| format!("{}", e)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
                 let seqs_s = seqs_ref.join(" ");
-                let s = format!("({} (lambda ({}) {}))", label, seqs_s, body);
+                let s = format!("(lambda ({}) {})", seqs_s, body);
                 write!(f, "{}", s)
             },
             Let (bindings, box tail) => {
-                 let seqs: Vec<String> = bindings.iter().map(|(k, v)| format!("[{} {}]", k, v)).collect();
+                let seqs: Vec<String> = bindings.iter().map(|(k, v)| format!("[{} {}]", k, v)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
                 let seqs_s = seqs_ref.join(" ");
                 let s = format!("(let ({})\n {})", seqs_s, tail);

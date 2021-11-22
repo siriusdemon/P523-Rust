@@ -80,6 +80,14 @@ fn let_scm(bindings: HashMap<String, Scheme>, e: Scheme) -> Scheme {
     Scheme::Let (bindings, Box::new(e))
 }
 
+fn letrec_scm(bindings: HashMap<String, Scheme>, e: Scheme) -> Scheme {
+    Scheme::Letrec (bindings, Box::new(e))
+}
+
+fn lambda_scm(args: Vec<String>, e: Scheme) -> Scheme {
+    Scheme::Lambda (args, Box::new(e))
+}
+
 fn funcall_scm(func: Scheme, args: Vec<Scheme>) -> Scheme {
     Scheme::Funcall (Box::new(func), args)
 }
@@ -132,25 +140,96 @@ impl ParseScheme {
 }
 
 
-pub struct UncoverFree {}
-impl UncoverFree {
-    pub fn run(&self, scm: Scheme) -> Scheme {
-        use Scheme::*;
-        
-    }
-}
+// pub struct UncoverFree {}
+// impl UncoverFree {
+//     pub fn run(&self, scm: Scheme) -> Scheme {
+//         return self.uncover_free(scm);
+//     }
+
+//     fn uncover_free(&self, scm: Scheme) -> (HashSet<String>, Scheme) {
+//         use Scheme::*;
+//         match scm {
+//             Symbol (s) => {
+//                 let mut free = HashSet::new();
+//                 free.insert(s.clone());
+//                 return (free, Symbol (s));
+//             }
+//             Quote (box imm) => {
+//                 return (HashSet::new(), Quote (Box::new(imm));
+//             }
+//             If (box pred, box b1, box b2) => {
+//                 let (pf, pred) = self.uncover_free(pred);
+//                 let (bf1, b1) = self.uncover_free(b1);
+//                 let (bf2, b2) = self.uncover_free(b2);
+//                 let new_set = self.union_freeset(vec![pf, bf1, bf2]);
+//                 return (new_set, if2_scm(pred, b1, b2));
+//             }
+//             Begin (mut exprs) => {
+//                 let mut sets = vec![];
+//                 let mut new_exprs = vec![];
+//                 for e in exprs.into_iter() {
+//                     let (fset, e) = self.uncover_free(e);
+//                     sets.push(fset);
+//                     new_exprs.push(e);
+//                 }
+//                 let new_set = self.union_freeset(sets);
+//                 return (new_set, Begin (new_exprs));
+//             }
+//             Let (mut bindings, box e) => {
+//                 let mut new_bindings = HashMap::new();
+//                 let mut sets = vec![];
+//                 for (k, v) in bindings.drain() {
+//                     let (fset, v) = self.uncover_free(v);
+//                     sets.push(fset);
+//                     new_bindings.insert(k, v);
+//                 }
+//                 let (fset, e) = self.uncover_free(e);
+//                 sets.push(fset);
+//                 let new_set = self.union_freeset(sets);
+//                 for k in new_bindings.keys() {
+//                     new_set.remove(k);
+//                 }
+//                 return (new_set, let_scm(new_bindings, e);
+//             }
+//             Letrec (mut lambdas, e) => {
+//                 let mut sets = vec![];
+//                 lambdas = lambdas.into_iter().map(|e| {
+//                     let (fset, e) = self.uncover_free(e);
+//                     sets.push(fset);
+//                     e
+//                 }).collect();
+//                 let (fset, e) = self.uncover_free(e);
+//                 sets.push(fset);
+//                 let new_set = self.union_freeset(sets);
+//                 let ()
+
+//             }
+
+//         }
+//     }
+
+//     fn union_freeset(&self, sets: Vec<HashSet<String>>) -> HashSet<String> {
+//         let mut new_set = HashSet::new();
+//         for set in sets {
+//             for e in set.drain() {
+//                 new_set.insert(e);
+//             }
+//         }
+//         return new_set;
+//     }
+// }
 
 
 pub struct LiftLetrec {}
 impl LiftLetrec {
     pub fn run(&self, scm: Scheme) -> Scheme {
         use Scheme::*;
-        let mut lambdas = vec![];
+        let mut lambdas = HashMap::new();
         let body = self.lift_letrec(scm, &mut lambdas);
         return Letrec (lambdas, Box::new(body));
     }
 
-    fn lift_letrec(&self, scm: Scheme, lambdas: &mut Vec<Scheme>) -> Scheme {
+    fn lift_letrec(&self, scm: Scheme, lambdas: &mut HashMap<String, Scheme>) -> Scheme {
         use Scheme::*;
         match scm {
             If (box pred, box b1, box b2) => {
@@ -182,12 +261,14 @@ impl LiftLetrec {
                 args = args.into_iter().map(|e| self.lift_letrec(e, lambdas)).collect();
                 return funcall_scm(new_func, args);
             }
-            Letrec (mut lambdas_local, box body) => {
-                lambdas_local = lambdas_local.into_iter().map(|e| self.lift_letrec(e, lambdas)).collect();
-                lambdas.append(&mut lambdas_local);
+            Letrec (mut bindings, box body) => {
+                for (k, val) in bindings.drain() {
+                    let new_val = self.lift_letrec(val, lambdas);
+                    lambdas.insert(k, new_val);
+                }
                 return self.lift_letrec(body, lambdas);
             }
-            Lambda (label, args, box body) => Lambda (label, args, Box::new(self.lift_letrec(body, lambdas))),
+            Lambda (args, box body) => Lambda (args, Box::new(self.lift_letrec(body, lambdas))),
             Quote (box imm) => Quote (Box::new(imm)),
             Symbol (s) => Symbol (s),
             Void => Void,
@@ -202,18 +283,13 @@ impl NormalizeContext {
         use Scheme::*;
         match scm {
             Letrec (mut lambdas, box value) => {
-                lambdas = lambdas.into_iter().map(|e| self.helper(e)).collect();
-                return Letrec (lambdas, Box::new(self.helper(value)));
+                let mut new_bindings = HashMap::new();
+                for (k, v) in lambdas.drain() {
+                    new_bindings.insert(k, self.value_helper(v));
+                }
+                return letrec_scm(new_bindings, self.value_helper(value));
             }
             other => panic!("Invalid Scheme Program {}", other), 
-        }
-    }
-
-    fn helper(&self, scm: Scheme) -> Scheme {
-        use Scheme::*;
-        match scm {
-            Lambda (label, args, box value) => Lambda (label, args, Box::new(self.value_helper(value))),
-            value => self.value_helper(value),
         }
     }
 
@@ -238,6 +314,10 @@ impl NormalizeContext {
                     new_bindings.insert(k, self.value_helper(val));
                 }
                 return let_scm(new_bindings, self.value_helper(tail));
+            }
+            Lambda (args, box body) => {
+                let new_body = self.value_helper(body);
+                return lambda_scm(args, new_body);
             }
             Prim1 (op, box e) if is_value_prim(op.as_str()) => prim1_scm(op, self.value_helper(e)),
             Prim2 (op, box e1, box e2) if is_value_prim(op.as_str()) => prim2_scm(op, self.value_helper(e1), self.value_helper(e2)),
@@ -411,21 +491,13 @@ impl SpecifyRepresentation {
         use Scheme::*;
         match scm {
             Letrec (mut lambdas, box value) => {
-                lambdas = lambdas.into_iter().map(|e| self.helper(e)).collect();
-                let new_value = self.helper(value);
-                return Letrec (lambdas, Box::new(new_value));
+                let mut new_bindings = HashMap::new();
+                for (k, v) in lambdas.drain() {
+                    new_bindings.insert(k, self.value_helper(v));
+                }
+                return letrec_scm(new_bindings, self.value_helper(value));
             }
             e => panic!("Invalid Program {}", e),
-        }
-    }
-
-    fn helper(&self, scm: Scheme) -> Scheme {
-        use Scheme::*;
-        match scm {
-            Lambda (labl, args, box value) => {
-                Lambda (labl, args, Box::new(self.value_helper(value)))
-            }
-            value => self.value_helper(value),
         }
     }
 
@@ -451,6 +523,7 @@ impl SpecifyRepresentation {
                 }
                 return Let (new_bindings, Box::new(self.value_helper(value)));
             }
+            Lambda (args, box body) => lambda_scm(args, self.value_helper(body)),
             Funcall (box mut func, mut args) => {
                 let new_func = self.value_helper(func);
                 args = args.into_iter().map(|a| self.value_helper(a)).collect();
@@ -677,10 +750,12 @@ impl UncoverLocals {
     pub fn run(&self, scm: Scheme) -> Scheme {
         use Scheme::*;
         match scm {
-            Letrec (mut lambdas, box tail) => {
-                lambdas = lambdas.into_iter().map(|e| self.helper(e)).collect();
-                let body = self.helper(tail); 
-                return Letrec (lambdas, Box::new(body));
+            Letrec (mut lambdas, box value) => {
+                let mut new_bindings = HashMap::new();
+                for (k, v) in lambdas.drain() {
+                    new_bindings.insert(k, self.helper(v));
+                }
+                return letrec_scm(new_bindings, self.helper(value));
             }
             e => panic!("Invalid Program {}", e),
         }
@@ -689,9 +764,9 @@ impl UncoverLocals {
     fn helper(&self, scm: Scheme) -> Scheme {
         use Scheme::*;
         match scm {
-            Lambda (labl, args, box tail) => {
+            Lambda (args, box tail) => {
                 let body = self.helper(tail);
-                Lambda (labl, args, Box::new(body))
+                Lambda (args, Box::new(body))
             }
             tail => {
                 let mut locals = HashSet::new();
@@ -852,10 +927,12 @@ impl RemoveLet {
     pub fn run(&self, scm: Scheme) -> Scheme {
         use Scheme::*;
         match scm {
-            Letrec (mut lambdas, box mut body) => {
-                lambdas = lambdas.into_iter().map(|e| self.helper(e)).collect();
-                body = self.helper(body);
-                return Letrec (lambdas, Box::new(body));
+            Letrec (mut lambdas, box value) => {
+                let mut new_bindings = HashMap::new();
+                for (k, v) in lambdas.drain() {
+                    new_bindings.insert(k, self.helper(v));
+                }
+                return letrec_scm(new_bindings, self.helper(value));
             }
             e => panic!("Invalid Program {}", e),
         }
@@ -864,9 +941,9 @@ impl RemoveLet {
     fn helper(&self, scm: Scheme) -> Scheme {
         use Scheme::*;
         match scm {
-            Lambda (labl, args, box mut body) => {
+            Lambda (args, box mut body) => {
                 body = self.helper(body);
-                Lambda (labl, args, Box::new(body))
+                Lambda (args, Box::new(body))
             }
             Locals (locals, box mut tail) => {
                 tail = self.tail_helper(tail);
@@ -1047,20 +1124,22 @@ impl CompileToExpr {
     pub fn run(&self, scm: Scheme) -> Expr {
         match scm {
             Scheme::Letrec (mut lambdas, box mut body) => {
-                let new_lambdas: Vec<_> = lambdas.into_iter().map(|e| self.helper(e)).collect();
-                let new_body = self.helper(body);
+                let new_lambdas: Vec<_> = lambdas.into_iter().map(|(labl, e)| {
+                    if let Scheme::Lambda (args, box body) = e {
+                        let new_body = self.body_helper(body);
+                        return Expr::Lambda (labl, args, Box::new(new_body));
+                    }
+                    unreachable!();
+                }).collect();
+                let new_body = self.body_helper(body);
                 Expr::Letrec (new_lambdas, Box::new(new_body))
             }
             e => panic!("Invalid Program {}", e)
         }
     }
 
-    fn helper(&self, scm: Scheme) -> Expr {
+    fn body_helper(&self, scm: Scheme) -> Expr {
         match scm {
-            Scheme::Lambda (labl, args, box body) => {
-                let new_body = self.helper(body);
-                Expr::Lambda (labl, args, Box::new(new_body))
-            }
             Scheme::Locals (locals, box tail) => {
                 let new_tail = self.tail_helper(tail);
                 Expr::Locals (locals, Box::new(new_tail))
