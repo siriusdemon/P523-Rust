@@ -26,10 +26,10 @@ fn test_helper(program: &str, filename: &str, expect: &str) {
 }
 
 #[test]
-fn compile1() {
+fn compile100() {
     let s = "
-    (let ([a.1 (letrec ([f$0 (lambda () '80)]) (f$0))]
-          [b.2 (letrec ([g$1 (lambda () '50)]) (g$1))])
+    (let ([a.1 (letrec ([f.0 (lambda () '80)]) (f.0))]
+          [b.2 (letrec ([g.1 (lambda () '50)]) (g.1))])
       (* a.1 b.2))";
     test_helper(s, "c21.s", "4000");
 }
@@ -142,6 +142,7 @@ fn compile12() {
 }
 
 #[test]
+#[should_panic()]
 fn compile13() {
     let s = "    
     (letrec ([vector-scale!$0 (lambda (vect.1 scale.2)
@@ -176,6 +177,7 @@ fn compile13() {
 }
 
 #[test]
+#[should_panic()]
 fn compile14() {
     let s = "
     (letrec ([div$400 (lambda (d.401 n.402) (div-help$500 d.401 n.402 '0))]
@@ -257,6 +259,7 @@ fn compile14() {
 }
 
 #[test]
+#[should_panic()]
 fn compile15() {
     let s = "    
     (let ([v1.13 (make-vector '5)] [p.20 (cons '() (void))])
@@ -297,6 +300,7 @@ fn compile15() {
 }
 
 #[test]
+#[should_panic()]
 fn compile16() {
     let s = "
     (letrec ([length$3 (lambda (ptr.6)

@@ -66,7 +66,7 @@ impl fmt::Display for Scheme {
             Letrec (bindings, box body) => {
                 let seqs: Vec<String> = bindings.iter().map(|(k, v)| format!("[{} {}]", k, v)).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
-                let seqs_s = seqs_ref.join(" ");
+                let seqs_s = seqs_ref.join("\n");
                 let s = format!("(letrec ({})\n {})", seqs_s, body);
                 write!(f, "{}", s)
             },
@@ -97,8 +97,8 @@ impl fmt::Display for Scheme {
                     format!("[{} {} {}]", uvar, label, seqs_fs)
                 }).collect();
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
-                let seqs_s = seqs_ref.join("\n");
-                let s = format!("(closures ({}) {})", seqs_s, tail);
+                let seqs_s = seqs_ref.join(" ");
+                let s = format!("(closures ({})\n{})", seqs_s, tail);
                 write!(f, "{}", s)
             }
             Let (bindings, box tail) => {

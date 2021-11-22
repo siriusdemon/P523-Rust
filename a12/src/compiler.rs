@@ -96,17 +96,21 @@ fn quote_scm(scm: Scheme) -> Scheme {
     Scheme::Quote (Box::new(scm))
 }
 
+fn uvar_to_label(var: &str) -> String {
+    var.replace(".", "$")
+}
 
 fn is_value_prim(s: &str) -> bool {
-    ["+", "-", "*", "car", "cdr", "cons", "make-vector", "vector-length", "vector-ref", "void"].contains(&s)
+    ["+", "-", "*", "car", "cdr", "cons", "make-vector", "vector-length", "vector-ref", "void", 
+    "make-procedure", "procedure-code", "procedure-ref"].contains(&s)
 }
 
 fn is_pred_prim(s: &str) -> bool {
-    ["<=", "<", "=", ">=", ">", "boolean?", "eq?", "fixnum?", "null?", "pair?", "vector?"].contains(&s)
+    ["<=", "<", "=", ">=", ">", "boolean?", "eq?", "fixnum?", "null?", "pair?", "vector?", "procedure?"].contains(&s)
 }
 
 fn is_effect_prim(s: &str) -> bool {
-    ["set-car!", "set-cdr!", "vector-set!"].contains(&s)
+    ["set-car!", "set-cdr!", "vector-set!", "procedure-set!"].contains(&s)
 }
 
 fn make_nopless_begin(exprs: Vec<Scheme>) -> Scheme {
@@ -155,9 +159,8 @@ impl UncoverFree {
                 free.insert(s.clone());
                 return (free, Symbol (s));
             }
-            Quote (box imm) => {
-                return (HashSet::new(), quote_scm(imm));
-            }
+            Quote (box imm) => (HashSet::new(), quote_scm(imm)),
+            Void => (HashSet::new(), Void),
             If (box pred, box b1, box b2) => {
                 let (pf, pred) = self.uncover_free(pred);
                 let (bf1, b1) = self.uncover_free(b1);
@@ -272,6 +275,7 @@ impl ConvertClosure {
         match scm {
             Symbol (s) => Symbol (s), 
             Quote (box imm) => quote_scm(imm),
+            Void => Void,
             If (box pred, box b1, box b2) => {
                 let new_pred = self.convert_closure(pred);
                 let new_b1 = self.convert_closure(b1);
@@ -294,7 +298,7 @@ impl ConvertClosure {
                 let mut clos = vec![];
                 for (k, v) in bindings.drain() {
                     if let Lambda (mut args, box Free (mut fvars, box body)) = v {
-                        let label = k.replace(".", "$");                        // uvar to label
+                        let label = uvar_to_label(&k);
                         clos.push((k.clone(), label.clone(), fvars.clone()));   // prepare closures
                         let new_body = self.convert_closure(body);
                         args.push(k.clone());                                   // cp as argument
@@ -339,7 +343,85 @@ impl ConvertClosure {
                 args.push(Symbol (tmp.clone()));
                 return let_scm(new_bindings, funcall_scm(Symbol (tmp), args));
             }
-            e => e,
+            e => panic!("Invalid Program {}", e),
+        }
+    }
+}
+
+pub struct IntroduceProceduraPrimitives {}
+impl IntroduceProceduraPrimitives {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        return self.intro(scm, "", &vec![]);
+    }
+
+    fn intro(&self, scm: Scheme, cp: &str, fvars: &Vec<String>) -> Scheme {
+        use Scheme::*;
+        match scm {
+            Symbol (s) => {
+                if fvars.contains(&s) {
+                    let index: i64 = fvars.iter().position(|x| x == &s).unwrap() as i64;
+                    return prim2_scm("procedure-ref".to_string(), Symbol (cp.to_string()), quote_scm(Int64 (index)));
+                }
+                return Symbol (s);
+            }
+            Quote (box imm) => quote_scm(imm),
+            Void => Void,
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.intro(pred, cp, fvars);
+                let new_b1 = self.intro(b1, cp, fvars);
+                let new_b2 = self.intro(b2, cp, fvars);
+                return if2_scm(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                exprs = exprs.into_iter().map(|e| self.intro(e, cp, fvars)).collect();
+                return Begin (exprs);
+            }
+            Let (mut bindings, box value) => {
+                let mut new_bindings = HashMap::new();
+                for (k, val) in bindings.drain() {
+                    new_bindings.insert(k, self.intro(val, cp, fvars));
+                }
+                return let_scm(new_bindings, self.intro(value, cp, fvars));
+            }
+            // letrec deconstruct into Lambda and Closures as follow
+            Letrec (mut bindings, box clos) => {
+                let mut new_bindings = HashMap::new();
+                for (k, val) in bindings.drain() {
+                    new_bindings.insert(k, self.intro(val, cp, fvars));
+                }
+                return letrec_scm(new_bindings, self.intro(clos, cp, fvars));
+            }
+            // here, we using new fvars and cp, because lambda body is closed.
+            Lambda (args, box Bindfree (mut new_fvars, box body)) => {
+                let new_cp = new_fvars.pop().unwrap();
+                let new_body = self.intro(body, &new_cp, &new_fvars);
+                return lambda_scm(args, new_body);
+            }
+            // separate it from letrec to show its self-contained.
+            Closures (clos, box body) => {
+                let mut bindings = HashMap::new();
+                let mut exprs = vec![];
+                for (cp, code, fvars) in clos {
+                    let length = fvars.len();
+                    let alloc = prim2_scm("make-procedure".to_string(), Symbol (code), quote_scm(Int64 (length as i64)));
+                    for (i, fvar) in fvars.into_iter().enumerate() {
+                        exprs.push(prim3_scm("procedure-set!".to_string(), Symbol (cp.clone()),  quote_scm(Int64 (i as i64)), Symbol (fvar)));
+                    }
+                    bindings.insert(cp, alloc);
+                }     
+                exprs.push(self.intro(body, cp, fvars));
+                return let_scm(bindings, Begin (exprs));
+            }
+            Prim1 (op, box e) => prim1_scm(op, self.intro(e, cp, fvars)),
+            Prim2 (op, box e1, box e2) => prim2_scm(op, self.intro(e1, cp, fvars), self.intro(e2, cp, fvars)),
+            Prim3 (op, box e1, box e2, box e3) => prim3_scm(op, self.intro(e1, cp, fvars), self.intro(e2, cp, fvars), self.intro(e3, cp, fvars)),
+            Funcall (box Symbol (func), mut args) => {
+                args = args.into_iter().map(|e| self.intro(e, cp, fvars)).collect();
+                // because we have convert_closure, func must be a symbol  
+                let newfn = prim1_scm("procedure-code".to_string(), Symbol (func));
+                return funcall_scm(newfn, args);
+            }
+            e => panic!("Invalid Program {}", e),
         }
     }
 }
@@ -671,6 +753,7 @@ impl SpecifyRepresentation {
                     "car" => mref_scm(new_value, Int64 (CAR_OFFSET)),
                     "cdr" => mref_scm(new_value, Int64 (CDR_OFFSET)),
                     "vector-length" => mref_scm(new_value, Int64 (VLEN_OFFSET)),
+                    "procedure-code" => mref_scm(new_value, Int64 (PROC_CODE_OFFSET)),
                     "make-vector" => {
                         let tmp1 = gen_uvar();                            
                         let mut bindings1 = HashMap::new();
@@ -694,11 +777,26 @@ impl SpecifyRepresentation {
                 let new_i = Int64 (i);
                 return prim2_scm(op, new_e, new_i);
             }
-            Prim2 (op, box e, box Quote (box Int64 (i))) if op.as_str() == "vector-ref" => {
-            // Kent say in this case, because imm is tagged. So we don't need to shift index
-            // but in my case, this imm is not shifted at all. I will test this.
+            Prim2 (op, box labl, box Quote (box Int64 (i))) if op.as_str() == "make-procedure" => {
+                let tmp = gen_uvar();
+                let vsize = (i << ALIGN_SHIFT) + DISP_PDATA;
+                let ptr = prim2_scm("+".to_string(), Alloc (Box::new(Int64 (vsize))), Int64 (TAG_PROC));
+                let mut bindings = HashMap::new();
+                bindings.insert(tmp.clone(), ptr);
+                let exprs = vec![
+                    mset_scm(Symbol (tmp.clone()), Int64 (PROC_CODE_OFFSET), labl),
+                    Symbol (tmp),
+                ];
+                return let_scm(bindings, Begin (exprs));
+            } 
+            Prim2 (op, box e, box Quote (box Int64 (i))) if op.as_str() == "vector-ref" || op.as_str() == "procedure-ref" => {
+                let offset = match op.as_str() {
+                    "vector-ref" => VDATA_OFFSET,
+                    "procedure-ref" => PROC_DATA_OFFSET,
+                    other => panic!("Invalid prim2 {}", other),
+                };
                 let new_e = self.value_helper(e); 
-                let n = (i << ALIGN_SHIFT) + VDATA_OFFSET;
+                let n = (i << ALIGN_SHIFT) + offset;
                 return mref_scm(new_e, Int64(n));
             }
             Prim2 (op, box v1, box v2) if is_value_prim(op.as_str()) => {
@@ -710,7 +808,6 @@ impl SpecifyRepresentation {
                         return prim2_scm(op, new_v1, new_v2);
                     }
                     "vector-ref" => {
-                        // in this case, we really save one operation
                         let new_v2 = prim2_scm("+".to_string(), new_v2, Int64 (VDATA_OFFSET));
                         return mref_scm(new_v1, new_v2);
                     }
@@ -771,12 +868,15 @@ impl SpecifyRepresentation {
                     other => prim2_scm(op, new_v1, new_v2),
                 }
             }
-            Prim3 (op, box v1, box Quote (box Int64 (i)), box v3) if op.as_str() == "vector-set!" => {
+            Prim3 (op, box v1, box Quote (box Int64 (i)), box v3)  if op.as_str() == "vector-set!" || op.as_str() == "procedure-set!" => {
+                let offset = match op.as_str() {
+                    "vector-set!" => VDATA_OFFSET,
+                    "procedure-set!" => PROC_DATA_OFFSET,
+                    other => panic!("Invalid prim2 op {}", other),
+                };
                 let new_v1 = self.value_helper(v1);
                 let new_v3 = self.value_helper(v3);
-                println!("vector-set index {}", i);
-                let n = (i << ALIGN_SHIFT) + VDATA_OFFSET;
-                println!("vector-set index ajust {}", n);
+                let n = (i << ALIGN_SHIFT) + offset;
                 return mset_scm(new_v1, Int64 (n), new_v3);
             }
             Prim3 (op, box v1, box v2, box v3) if is_effect_prim(op.as_str()) => {
@@ -1668,14 +1768,6 @@ impl RemoveComplexOpera {
                 exprs.push(new_set);
                 return Begin (exprs);
             }
-            Set (box sym, box Funcall (labl, mut args)) => {
-                let mut exprs = vec![];
-                args = args.into_iter().map(|x| self.reduce_value(x, locals, &mut exprs)).collect();
-                let new_set = set1(sym, Funcall (labl, args));
-                if exprs.len() == 0 { return new_set; }
-                exprs.push(new_set);
-                return Begin (exprs);
-            }
             Set (box sym, box Alloc (box e)) => {
                 let mut exprs = vec![];
                 let e = self.reduce_value(e, locals, &mut exprs);
@@ -1689,6 +1781,15 @@ impl RemoveComplexOpera {
                 let base_ = self.reduce_value(base, locals, &mut exprs);
                 let offset_ = self.reduce_value(offset, locals, &mut exprs);
                 let new_set = set1(sym, Mref (Box::new(base_), Box::new(offset_)));
+                if exprs.len() == 0 { return new_set; }
+                exprs.push(new_set);
+                return Begin (exprs);
+            }
+            Set (box sym, box Funcall (box mut func, mut args)) => {
+                let mut exprs = vec![];
+                func = self.reduce_value(func, locals, &mut exprs);
+                args = args.into_iter().map(|e| self.reduce_value(e, locals, &mut exprs)).collect();
+                let new_set = set1(sym, Funcall (Box::new(func), args));
                 if exprs.len() == 0 { return new_set; }
                 exprs.push(new_set);
                 return Begin (exprs);
@@ -2637,7 +2738,7 @@ impl SelectInstructions {
                 return self.rewrite(a, op, Symbol (b), Int64 (i), unspills);
             }
             Set (box Symbol (a), box Prim2 (op, box Int64 (i1), box Int64 (i2))) => {
-                return self.set2_int_rewrite(a, op, Int64 (i1), Int64 (i2));
+                return self.set2_int_rewrite(a, op, Int64 (i1), Int64 (i2), unspills);
             }
             Set (box Symbol (a), box Symbol (b)) => {
                 return self.set1_fv_rewrite(a, b, unspills);
@@ -2718,7 +2819,7 @@ impl SelectInstructions {
     }
 
     fn set2_fv_rewrite(&self, a: String, op: String, b: String, c: String, unspills: &mut HashSet<String>) -> Expr {
-        if is_fv(&a) && is_fv(&c) {
+        if (is_fv(&a) && is_fv(&c)) || (is_fv(&a) && op.as_str() == "*") {
             let new_uvar = gen_uvar();
             unspills.insert(new_uvar.clone());
             let expr1 = set1(Symbol (new_uvar.clone()), Symbol (c));
@@ -2728,7 +2829,15 @@ impl SelectInstructions {
         return set2(Symbol (a), op, Symbol (b), Symbol (c));
     }
 
-    fn set2_int_rewrite(&self, a: String, op: String, b: Expr, c: Expr) -> Expr {
+    fn set2_int_rewrite(&self, a: String, op: String, b: Expr, c: Expr, unspills: &mut HashSet<String>) -> Expr {
+        if is_fv(&a) && op.as_str() == "*" {
+            let new_uvar = gen_uvar();
+            unspills.insert(new_uvar.clone());
+            let expr1 = set1(Symbol (new_uvar.clone()), b);
+            let expr2 = set2(Symbol (new_uvar.clone()), op, Symbol (new_uvar.clone()), c);
+            let expr3 = set1(Symbol (a), Symbol (new_uvar.clone()));
+            return Begin (vec![expr1, expr2, expr3]);
+        }
         let expr1 = set1(Symbol (a.clone()), b); 
         let expr2 = set2(Symbol (a.clone()), op, Symbol (a), c);
         return Begin (vec![expr1, expr2]);
@@ -3853,6 +3962,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("UncoverFree", &expr);
     let expr = ConvertClosure{}.run(expr);
     compile_formatter("ConvertClosure", &expr);
+    let expr = IntroduceProceduraPrimitives{}.run(expr);
+    compile_formatter("IntroduceProceduraPrimitives", &expr);
     let expr = LiftLetrec{}.run(expr);
     compile_formatter("LiftLetrec", &expr);
     let expr = NormalizeContext{}.run(expr);
