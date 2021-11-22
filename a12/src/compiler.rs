@@ -621,7 +621,7 @@ impl NormalizeContext {
                 args = args.into_iter().map(|e| self.value_helper(e)).collect();
                 let e = funcall_scm(new_func, args);
                 let relop = prim2_scm("eq?".to_string(), e, quote_scm(Bool (false)));
-                return if2_scm(relop, quote_scm(Bool (false)),quote_scm(Bool (true)));
+                return if2_scm(relop, Bool (false), Bool (true));
             }
             Quote (box Bool (b)) => Bool (b),
             // note that the EmptyList is convert to (true). Because anything if is not #f is (true)
@@ -631,7 +631,7 @@ impl NormalizeContext {
             // is label comparable?
             Symbol (s) => {
                 let relop = prim2_scm("eq?".to_string(), Symbol (s), quote_scm(Bool (false)));
-                return if2_scm(relop, quote_scm(Bool (false)),quote_scm(Bool (true)));
+                return if2_scm(relop, Bool (false), Bool (true));
             }
             other => panic!("Invalid predicate {}", other),
         }
@@ -940,6 +940,9 @@ impl SpecifyRepresentation {
                     }
                     "null?" => {
                         prim2_scm("=".to_string(), new_e1, Int64 (NIL))
+                    }
+                    "procedure?" => {
+                        prim2_scm("=".to_string(), prim2_scm("logand".to_string(), new_e1, Int64 (MASK_PROC)), Int64 (TAG_PROC))
                     }
                     other => panic!("Invalid Predicate {}", other),
                 }

@@ -330,3 +330,113 @@ fn compile18() {
       (- (* '4 '5) ((mult.2 (succ.1 '3)) (succ.1 '4))))";
     test_helper(s, "c18.s", "0");
 }
+
+#[test]
+fn compile19() {
+    let s = "(let ([x.1 (cons '1 '2)]) (pair? x.1))";
+    test_helper(s, "c19.s", "#t");
+}
+
+#[test]
+fn compile20() {
+    let s = "    
+    (let ([a.1 (cons '5 '10)])
+      (let ([is-pair.2 (pair? a.1)])
+        (if is-pair.2 (car a.1) a.1)))";
+    test_helper(s, "c20.s", "5");
+}
+
+#[test]
+fn compile21() {
+    let s = "    
+    (letrec ([fact.0 (lambda (n.3 k.4)
+                       (if (eq? n.3 '0)
+                           (k.4 '1)
+                           (fact.0 (- n.3 '1)
+                                   (letrec ([anon.5 (lambda (v.6)
+                                                      (k.4 (* n.3 v.6)))])
+                                     anon.5))))]
+             [anon.1 (lambda (v.2) v.2)])
+      (fact.0 '5 anon.1))";
+    test_helper(s, "c21.s", "120");
+}
+
+#[test]
+fn compile22() {
+    let s = "
+    (letrec ([even?.1 (lambda (x.3) (if (= x.3 '0) '#t (odd?.2 (- x.3 '1))))]
+             [odd?.2 (lambda (x.4) (if (even?.1 x.4) '#f '#t))])
+      (cons (even?.1 '17) (odd?.2 '17)))";
+    test_helper(s, "c22.s", "(#f . #t)");
+}
+
+#[test]
+fn compile23() {
+    let s = "(begin '7)";
+    test_helper(s, "c23-1.s", "7");
+    let s = "(letrec () '7)";
+    test_helper(s, "c23-2.s", "7");
+    let s = "(letrec () (letrec () '7))";
+    test_helper(s, "c23-3.s", "7");
+    let s = "(let ([x.1 (cons '1 '2)]) (pair? x.1))";
+    test_helper(s, "c23-4.s", "#t");
+    let s = "
+    (let ([x.1 '5] [y.2 '10])
+      (begin
+        (+ x.1 y.2)
+        x.1))";
+    test_helper(s, "c23-5.s", "5");
+    let s = "
+    (let ([tf.1 (cons '#t '#f)])
+      (if (car tf.1) '5 '10))";
+    test_helper(s, "c23-6.s", "5");
+    let s = "
+    (let ([tf.1 (cons '#t '#f)])
+      (if (cdr tf.1) '5 '10))";
+    test_helper(s, "c23-7.s", "10");
+    let s = "
+    (let ([x.1 '3])
+      (letrec ([f.2 (lambda () x.1)])
+        (f.2)))";
+    test_helper(s, "c23-8.s", "3");
+    let s = "
+    (cdr (let ([x.1 (cons '1 '2)])
+           (begin
+             (set-car! x.1 '10)
+             (set-cdr! x.1 '20)
+             x.1)))";
+    test_helper(s, "c23-9.s", "20");
+    let s = "
+    (let ([x.1 (cons '1 '2)])
+      (set-car! x.1 '4))";
+    test_helper(s, "c23-10.s", "#<void>");
+    let s = "
+    (+ (let ([x.1 '3])
+         (letrec ([f.2 (lambda (y.3) (+ x.1 y.3))])
+           (f.2 '5)))
+       '7)";
+    test_helper(s, "c23-11.s", "15");
+}
+
+#[test]
+fn compile24() {
+    let s = "(letrec ([f.1 (lambda () f.1)]) (procedure? (f.1)))";
+    test_helper(s, "c24-1.s", "#t");
+    // let s = "
+    // (letrec ([vectors?.0 (lambda (v.1 v.2)
+    //                        (if (vector? v.1)
+    //                            (vector? v.2)
+    //                            '#f))])
+    //   (let ([v.3 (make-vector '2)] [v.4 (make-vector '2)])
+    //     (begin
+    //       (vector-set! v.3 '0 '10)
+    //       (vector-set! v.3 '1 '20)
+    //       (vector-set! v.4 '0 '5)
+    //       (vector-set! v.4 '1 '15)
+    //       (if (eq? (vectors?.0 v.3 v.4) '#t)
+    //           (+
+    //             (* (vector-ref v.3 '0) (vector-ref v.4 '0))
+    //             (* (vector-ref v.3 '1) (vector-ref v.4 '1)))
+    //           '100))))";
+    // test_helper(s, "c24-2.s", "350");
+}

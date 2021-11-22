@@ -164,7 +164,7 @@ impl Parser {
             "set!" => self.parse_set(),
             "if" => self.parse_if(),
             "let" => self.parse_let(),
-            "car" | "cdr" | "make-vector" | "vector-length" | 
+            "car" | "cdr" | "make-vector" | "vector-length" | "procedure?" |
             "boolean?" | "fixnum?" | "null?" | "pair?" | "vector?"
                 => self.parse_prim1(),
             "+" | "-" | "*" | "logor" | "logand" | "sra" |
