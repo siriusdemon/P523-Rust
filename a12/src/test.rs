@@ -476,4 +476,12 @@ fn compile26() {
     ((letrec ([f.0 (lambda (x.1) (+ '1 x.1))]) f.0)
      (let ([f.2 '3]) (+ f.2 '1)))";
     test_helper(s, "c26-2.s", "5");
+    let s = "    
+    (cons (letrec ([f.0 (lambda (h.1 v.2) (* h.1 v.2))])
+            (letrec ([k.7 (lambda (x.3) (+ x.3 '5))])
+              (let ([x.5 '15])
+                (letrec ([g.8 (lambda (x.4) (+ '1 x.4))])
+                  (k.7 (g.8 (let ([g.6 '3]) (f.0 g.6 x.5))))))))
+          '())";
+    test_helper(s, "c26-3.s", "(51)");
 }
