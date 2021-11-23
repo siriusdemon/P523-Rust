@@ -157,12 +157,12 @@ fn compile8() {
 #[test]
 fn compile9() {
     let s = "    
-    ((((((lambda (x.3922)
-           (lambda (y.3923)
-             (lambda (z.3924)
-               (lambda (w.3925)
-                 (lambda (u.3926)
-                   (+ x.3922 (+ y.3923 (+ z.3924 (+ w.3925 u.3926)))))))))
+    ((((((lambda (x.1)
+           (lambda (y.2)
+             (lambda (z.3)
+               (lambda (w.4)
+                 (lambda (u.5)
+                   (+ x.1 (+ y.2 (+ z.3 (+ w.4 u.5)))))))))
          '5)
         '6)
        '7)
@@ -170,6 +170,20 @@ fn compile9() {
      '9)";
     test_helper(s, "c9.s", "35");
 }
+
+#[test]
+fn compile99() {
+    let s = "     
+    ((((lambda (x.1)
+           (lambda (y.2)
+             (lambda (z.3)
+                   (+ x.1 (+ y.2 (+ z.3 '1))))))
+       '7)
+      '8)
+     '9)";
+    test_helper(s, "c99.s", "25");
+}
+
 
 #[test]
 fn compile10() {
@@ -292,4 +306,62 @@ fn compile15() {
 fn compile16() {
     let s = "(letrec () (begin (> '7 '8) '8))";
     test_helper(s, "c16.s", "8");
+}
+
+#[test]
+fn compile17() {
+    let s = "    
+    (letrec ([f.3871 (lambda (x.3877) (+ '1 x.3877))]
+             [g.3870 (lambda (x.3876) (- x.3876 '1))]
+             [t.3869 (lambda (x.3875) (- x.3875 '1))]
+             [j.3868 (lambda (x.3874) (- x.3874 '1))]
+             [i.3867 (lambda (x.3873) (- x.3873 '1))]
+             [h.3866 (lambda (x.3872) (- x.3872 '1))])
+      (let ([x.3878 '80])
+        (let ([a.3881 (f.3871 x.3878)]
+              [b.3880 (g.3870 x.3878)]
+              [c.3879 (h.3866 (i.3867 (j.3868 (t.3869 x.3878))))])
+          (* a.3881 (* b.3880 (+ c.3879 '0))))))";
+    test_helper(s, "c17.s", "486324");
+}
+
+#[test]
+fn compile18() {
+    let s = "    
+    (letrec ([fold.0 (lambda (proc.1 base.2 ls.3)
+                       (if (null? ls.3)
+                           base.2
+                           (proc.1 (car ls.3)
+                                   (fold.0 proc.1 base.2 (cdr ls.3)))))])
+      (fold.0 (lambda (x.4 y.5) (* x.4 y.5))
+              '1
+              (cons '1 (cons '2 (cons '3 (cons '4 (cons '5 '())))))))";
+    test_helper(s, "c18.s", "120");
+}
+
+#[test]
+fn compile19() {
+    let s = "    
+    (let ([fill.5 (lambda (x.1 v.2)
+                    (if (vector? v.2)
+                        (let ([length.4 (vector-length v.2)])
+                          (if (fixnum? x.1)
+                              (if (<= x.1 length.4)
+                                  (letrec ([loop.6 (lambda (index.3)
+                                                     (if (= index.3 length.4)
+                                                         '#t
+                                                         (begin
+                                                           (vector-set!
+                                                             v.2
+                                                             index.3
+                                                             x.1)
+                                                           (loop.6
+                                                             (+ index.3
+                                                                '1)))))])
+                                    (loop.6 '0))
+                                  '#f)
+                              '#f))
+                        '#f))])
+      (fill.5 '3 (make-vector '10)))";
+    test_helper(s, "c19.s", "#t");
 }
