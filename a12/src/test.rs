@@ -371,6 +371,15 @@ fn compile22() {
 }
 
 #[test]
+fn compile222() {
+    let s = "
+    (letrec ([even?.1 (lambda (x.3) (if (= x.3 '0) '#t (odd?.2 (- x.3 '1))))]
+             [odd?.2 (lambda (x.4) (if (even?.1 x.4) '#f '#t))])
+      (even?.1 '17)";
+    test_helper(s, "c222.s", "#f");
+}
+
+#[test]
 fn compile23() {
     let s = "(begin '7)";
     test_helper(s, "c23-1.s", "7");
