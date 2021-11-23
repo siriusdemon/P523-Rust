@@ -113,6 +113,10 @@ fn is_effect_prim(s: &str) -> bool {
     ["set-car!", "set-cdr!", "vector-set!", "procedure-set!"].contains(&s)
 }
 
+fn gen_anon() -> String {
+    gensym("anon.")
+}
+
 fn make_nopless_begin(exprs: Vec<Scheme>) -> Scheme {
     use Scheme::*;
     fn helper(exprs: Vec<Scheme>, collector: &mut Vec<Scheme>) {
@@ -147,20 +151,167 @@ impl ParseScheme {
 pub struct OptimizeDirectCall {}
 impl OptimizeDirectCall {
     pub fn run(&self, scm: Scheme) -> Scheme {
-        self.optimize_direct_call(scm)
+        self.optimize(scm)
     }
 
-    fn optimize_direct_call(&self, scm: Scheme) -> Scheme {
+    fn optimize(&self, scm: Scheme) -> Scheme {
         use Scheme::*;
         match scm {
+            If (box pred, box b1, box b2) => if2_scm(
+                self.optimize(pred),
+                self.optimize(b1),
+                self.optimize(b2),
+            ),
+            Begin (mut exprs) => Begin (
+                exprs.into_iter().map(|e| self.optimize(e)).collect()
+            ),
             Funcall (box Lambda (args, box body), values) if args.len() == values.len() => {
                 let mut bindings = HashMap::new();
                 for (arg, val) in args.into_iter().zip(values) {
-                    bindings.insert(arg, val);
+                    bindings.insert(arg, self.optimize(val));
                 }
-                return let_scm(bindings, body);
+                return let_scm(bindings, self.optimize(body));
             }
-            other => other,
+            Funcall (box func, mut values) => funcall_scm(
+                self.optimize(func), 
+                values.into_iter().map(|e| self.optimize(e)).collect()
+            ),
+            Let (mut bindings, box body) => {
+                let mut new_bindings = HashMap::new();
+                for (k, v) in bindings.drain() {
+                    new_bindings.insert(k, self.optimize(v));
+                }
+                return let_scm(new_bindings, self.optimize(body));
+            }
+            Letrec (mut bindings, box body) => {
+                let mut new_bindings = HashMap::new();
+                for (k, v) in bindings.drain() {
+                    new_bindings.insert(k, self.optimize(v));
+                }
+                return letrec_scm(new_bindings, self.optimize(body));
+            }
+            Lambda (args, box body) => lambda_scm(args, self.optimize(body)),
+            Prim1 (op, box e) => prim1_scm(op, self.optimize(e)),
+            Prim2 (op, box e1, box e2) => prim2_scm(op, self.optimize(e1), self.optimize(e2)),
+            Prim3 (op, box e1, box e2, box e3) => prim3_scm(op, self.optimize(e1), self.optimize(e2), self.optimize(e3)),
+            Symbol (s) => Symbol (s),
+            Quote (box imm) => quote_scm(imm),
+            Void => Void,
+            other => panic!("Invalid Program {}", other),
+        }
+    }
+}
+
+pub struct RemoveAnonymousLambda {}
+impl RemoveAnonymousLambda {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        self.remove(scm, true)
+    }
+
+    fn remove(&self, scm: Scheme, anonymous: bool) -> Scheme {
+        use Scheme::*;
+        match scm {
+            If (box pred, box b1, box b2) => if2_scm(
+                self.remove(pred, true),
+                self.remove(b1, true),
+                self.remove(b2, true),
+            ),
+            Begin (mut exprs) => Begin (
+                exprs.into_iter().map(|e| self.remove(e, true)).collect()
+            ),
+            Funcall (box func, mut values) => funcall_scm(
+                self.remove(func, true), 
+                values.into_iter().map(|e| self.remove(e, true)).collect()
+            ),
+            Let (mut bindings, box body) => {
+                let mut new_bindings = HashMap::new();
+                for (k, v) in bindings.drain() {
+                    new_bindings.insert(k, self.remove(v, false));
+                }
+                return let_scm(new_bindings, self.remove(body, true));
+            }
+            Letrec (mut bindings, box body) => {
+                let mut new_bindings = HashMap::new();
+                for (k, v) in bindings.drain() {
+                    new_bindings.insert(k, self.remove(v, false));
+                }
+                return letrec_scm(new_bindings, self.remove(body, true));
+            }
+            Lambda (args, box body) => {
+                let scm = lambda_scm(args, self.remove(body, true));
+                if anonymous {
+                    let tmp = gen_anon();
+                    let mut new_bindings = HashMap::new();
+                    new_bindings.insert(tmp.clone(), scm);
+                    return letrec_scm(new_bindings, Symbol (tmp));
+                }
+                return scm;
+            }
+            Prim1 (op, box e) => prim1_scm(op, self.remove(e, true)),
+            Prim2 (op, box e1, box e2) => prim2_scm(op, self.remove(e1, true), self.remove(e2, true)),
+            Prim3 (op, box e1, box e2, box e3) => 
+                prim3_scm(op, self.remove(e1, true), self.remove(e2, true), self.remove(e3, true)),
+            Symbol (s) => Symbol (s),
+            Quote (box imm) => quote_scm(imm),
+            Void => Void,
+            other => panic!("Invalid Program {}", other),
+        }
+    }
+}
+
+pub struct SanitizeBindingForms {}
+impl SanitizeBindingForms {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        self.sanitize(scm)
+    }
+
+    fn sanitize(&self, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        match scm {
+            If (box pred, box b1, box b2) => if2_scm(
+                self.sanitize(pred),
+                self.sanitize(b1),
+                self.sanitize(b2),
+            ),
+            Begin (mut exprs) => Begin (
+                exprs.into_iter().map(|e| self.sanitize(e)).collect()
+            ),
+            Funcall (box func, mut values) => funcall_scm(
+                self.sanitize(func), 
+                values.into_iter().map(|e| self.sanitize(e)).collect()
+            ),
+            Let (mut bindings, box body) => {
+                let mut let_bindings = HashMap::new();
+                let mut letrec_bindings = HashMap::new();
+                for (k, v) in bindings.drain() {
+                    let v = self.sanitize(v);
+                    if let Lambda (_args, _body) = &v {
+                        letrec_bindings.insert(k, v);
+                    } else {
+                        let_bindings.insert(k, v);
+                    }
+                }
+                let body = self.sanitize(body);
+                if let_bindings.is_empty() && letrec_bindings.is_empty() { return body; }
+                if letrec_bindings.is_empty() { return let_scm(let_bindings, body); }
+                if let_bindings.is_empty() { return letrec_scm(letrec_bindings, body); }
+                return let_scm(let_bindings, letrec_scm(letrec_bindings, body));
+            }
+            Letrec (mut bindings, box body) => {
+                let mut new_bindings = HashMap::new();
+                for (k, v) in bindings.drain() {
+                    new_bindings.insert(k, self.sanitize(v));
+                }
+                return letrec_scm(new_bindings, self.sanitize(body));
+            }
+            Lambda (args, box body) => lambda_scm(args, self.sanitize(body)),
+            Prim1 (op, box e) => prim1_scm(op, self.sanitize(e)),
+            Prim2 (op, box e1, box e2) => prim2_scm(op, self.sanitize(e1), self.sanitize(e2)),
+            Prim3 (op, box e1, box e2, box e3) => prim3_scm(op, self.sanitize(e1), self.sanitize(e2), self.sanitize(e3)),
+            Symbol (s) => Symbol (s),
+            Quote (box imm) => quote_scm(imm),
+            Void => Void,
+            other => panic!("Invalid Program {}", other),
         }
     }
 }
@@ -3996,6 +4147,10 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("ParseScheme", &expr);
     let expr = OptimizeDirectCall{}.run(expr);
     compile_formatter("OptimizeDirectCall", &expr);
+    let expr = RemoveAnonymousLambda{}.run(expr);
+    compile_formatter("RemoveAnonymousLambda", &expr);
+    let expr = SanitizeBindingForms{}.run(expr);
+    compile_formatter("SanitizeBindingForms", &expr);
     let expr = UncoverFree{}.run(expr);
     compile_formatter("UncoverFree", &expr);
     let expr = ConvertClosure{}.run(expr);
