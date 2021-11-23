@@ -657,15 +657,21 @@ impl IntroduceProceduraPrimitives {
             Funcall (box Symbol (func), mut args) => {
                 args = args.into_iter().map(|e| self.intro(e, cp, fvars)).collect();
                 // because we have convert_closure, func must be a symbol  
-                // but it is a uvar or a cp?
+                // but it is a uvar or a cp or a label?
                 if fvars.contains(&func) {
                     let index = self.find_freevar_index(fvars, func.as_str());
                     let proc = prim2_scm("procedure-ref".to_string(), Symbol (cp.to_string()), quote_scm(Int64 (index)));
                     let newfn = prim1_scm("procedure-code".to_string(), proc);
                     return funcall_scm(newfn, args);
                 }
-                let newfn = prim1_scm("procedure-code".to_string(), Symbol (func));
-                return funcall_scm(newfn, args);
+                if is_uvar(&func) { 
+                    let newfn = prim1_scm("procedure-code".to_string(), Symbol (func));
+                    return funcall_scm(newfn, args);
+                }
+                if is_label(&func) { 
+                    return funcall_scm(Symbol (func), args);
+                }
+                panic!("Invalid procedure {}", func);
             }
             e => panic!("Invalid Program {}", e),
         }
