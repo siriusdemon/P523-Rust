@@ -520,6 +520,73 @@ impl ConvertClosure {
     }
 }
 
+pub struct OptimizeKnownCall {}
+impl OptimizeKnownCall {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        let mut mapping = HashMap::new();
+        self.optimize(scm, &mut mapping)
+    }
+
+    fn optimize(&self, scm: Scheme, mapping: &mut HashMap<String, String>) -> Scheme {
+        use Scheme::*;
+        match scm {
+            Symbol (s) => Symbol (s),
+            Quote (box imm) => quote_scm(imm),
+            Void => Void,
+            If (box pred, box b1, box b2) => {
+                let new_pred = self.optimize(pred, mapping);
+                let new_b1 = self.optimize(b1, mapping);
+                let new_b2 = self.optimize(b2, mapping);
+                return if2_scm(new_pred, new_b1, new_b2);
+            }
+            Begin (mut exprs) => {
+                exprs = exprs.into_iter().map(|e| self.optimize(e, mapping)).collect();
+                return Begin (exprs);
+            }
+            Let (mut bindings, box value) => {
+                let mut new_bindings = HashMap::new();
+                for (k, val) in bindings.drain() {
+                    new_bindings.insert(k, self.optimize(val, mapping));
+                }
+                return let_scm(new_bindings, self.optimize(value, mapping));
+            }
+            Letrec (mut bindings, box clos) => {
+                // here, we should collects closures firstly. or we will lost some optimization.
+                let clos = self.optimize(clos, mapping);
+                let mut new_bindings = HashMap::new();
+                for (k, val) in bindings.drain() {
+                    new_bindings.insert(k, self.optimize(val, mapping));
+                }
+                return letrec_scm(new_bindings, clos);
+            }
+            Lambda (args, box Bindfree (mut new_fvars, box body)) => {
+                let new_body = self.optimize(body, mapping);
+                return lambda_scm(args, Bindfree (new_fvars, Box::new(new_body)));
+            }
+            // we collect mapping here 
+            Closures (clos, box body) => {
+                for (cp, code, fvars) in &clos {
+                    mapping.insert(cp.to_string(), code.to_string());
+                }     
+                return Closures (clos, Box::new(self.optimize(body, mapping)));
+            }
+            Prim1 (op, box e) => prim1_scm(op, self.optimize(e, mapping)),
+            Prim2 (op, box e1, box e2) => prim2_scm(op, self.optimize(e1, mapping), self.optimize(e2, mapping)),
+            Prim3 (op, box e1, box e2, box e3) => prim3_scm(op, self.optimize(e1, mapping), self.optimize(e2, mapping), self.optimize(e3, mapping)),
+            // perform replace here
+            Funcall (box Symbol (mut func), mut args) => {
+                // since variables is unique, perform args here will not effect its result.
+                args = args.into_iter().map(|e| self.optimize(e, mapping)).collect();
+                match mapping.get(&func) {
+                    Some (labl) => funcall_scm(Symbol (labl.to_string()), args),
+                    None => funcall_scm(Symbol (func), args),
+                }
+            }
+            e => panic!("Invalid Program {}", e),
+        }
+    }
+}
+
 pub struct IntroduceProceduraPrimitives {}
 impl IntroduceProceduraPrimitives {
     pub fn run(&self, scm: Scheme) -> Scheme {
@@ -4155,6 +4222,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("UncoverFree", &expr);
     let expr = ConvertClosure{}.run(expr);
     compile_formatter("ConvertClosure", &expr);
+    let expr = OptimizeKnownCall{}.run(expr);
+    compile_formatter("OptimizeKnownCall", &expr);
     let expr = IntroduceProceduraPrimitives{}.run(expr);
     compile_formatter("IntroduceProceduraPrimitives", &expr);
     let expr = LiftLetrec{}.run(expr);
