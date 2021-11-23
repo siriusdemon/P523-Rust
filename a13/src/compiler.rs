@@ -144,6 +144,27 @@ impl ParseScheme {
 }
 
 
+pub struct OptimizeDirectCall {}
+impl OptimizeDirectCall {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        self.optimize_direct_call(scm)
+    }
+
+    fn optimize_direct_call(&self, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        match scm {
+            Funcall (box Lambda (args, box body), values) if args.len() == values.len() => {
+                let mut bindings = HashMap::new();
+                for (arg, val) in args.into_iter().zip(values) {
+                    bindings.insert(arg, val);
+                }
+                return let_scm(bindings, body);
+            }
+            other => other,
+        }
+    }
+}
+
 pub struct UncoverFree {}
 impl UncoverFree {
     pub fn run(&self, scm: Scheme) -> Scheme {
@@ -3973,6 +3994,8 @@ pub fn everybody_home(expr: &Expr) -> bool {
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseScheme{}.run(s);
     compile_formatter("ParseScheme", &expr);
+    let expr = OptimizeDirectCall{}.run(expr);
+    compile_formatter("OptimizeDirectCall", &expr);
     let expr = UncoverFree{}.run(expr);
     compile_formatter("UncoverFree", &expr);
     let expr = ConvertClosure{}.run(expr);
