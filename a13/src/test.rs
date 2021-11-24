@@ -125,7 +125,7 @@ fn compile7() {
                                     ((decrx.3725) '1)
                                     (fib.3722 (car x.3723))))))))])
       (fib.3722 '10))";
-    test_helper(s, "c7.s", "384000");
+    test_helper(s, "c7.s", "89");
 }
 
 #[test]
@@ -151,7 +151,7 @@ fn compile8() {
       (append.3751
         ((((curry-list.3752 '1) '2) '3) '4)
         ((((curry-list.3752 '5) '6) '7) '8)))";
-    test_helper(s, "c8.s", "(1 2 3 4 5 6 7 . 8)");
+    test_helper(s, "c8.s", "(1 2 3 4 5 6 7 8)");
 }
 
 #[test]
