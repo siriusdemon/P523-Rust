@@ -330,17 +330,17 @@ impl Parser {
     fn parse_quote(&mut self) -> Scheme {
         let _quote = self.remove_top();
         let t = self.top().unwrap();
-        if t.token.as_str() == "(" || t.token.as_str() == "[" {
-            return self.parse_quote_list();
-        }  
-        return self.parse_quote_atom();
+        match t.token.as_str() {
+            "(" | "[" => self.parse_quote_list(),
+            "#" => self.parse_literal(),
+            other => self.parse_quote_atom(),
+        }
     }
 
     fn parse_quote_atom(&mut self) -> Scheme {
         let atom = self.top().unwrap();
         let chars: Vec<char> = atom.token.chars().collect();
         match chars[0] {
-            '#' => self.parse_literal(),
             '0' ..= '9' => Quote (Box::new(self.parse_integer())),
             '-' => Quote (Box::new(self.parse_integer())),
             other => panic!("Invalid literal {} at line {}, col {}", atom.token, atom.line, atom.col),
@@ -356,19 +356,24 @@ impl Parser {
         }
 
         let mut elements = vec![];
+        let mut period = false;
         while let Some(ref t) = self.top() {
             match t.token.as_str() {
                 ")" => break,
                 "(" => elements.push(self.parse_quote_list()),
                 "#" => elements.push(self.parse_literal()),
+                "." => { // it means ending is coming, leave of last expr.
+                    self.remove_top(); 
+                    period = true;
+                }
                 other => elements.push(self.parse_quote_atom()),
             };
         }
-        let _right = self.remove_top();
-        let mut list = Quote (Box::new(EmptyList));
+        let mut list = if period { elements.pop().unwrap() } else { quote_scm(EmptyList) };
         while let Some(scm) = elements.pop() {
             list = Prim2 ("cons".to_string(), Box::new(scm), Box::new(list));
         }
+        let _right = self.remove_top();
         return list;
     }
 

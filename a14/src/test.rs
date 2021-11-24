@@ -131,3 +131,11 @@ fn compile1_5() {
     let s = "(if '10 '#f '#t)";
     test_helper(s, "1-43.s", "#f");
 }
+
+#[test]
+fn compile2() {
+    let s = "
+    (let ([f.1 (lambda () '(1 . 2))])
+        (eq? (f.1) (f.1)))";
+    test_helper(s, "1-2.s", "#t");
+}

@@ -10,7 +10,9 @@ use compiler::compile;
 
 
 fn main() -> std::io::Result<()> {
-    let s = "'((1 2) 3 4)";
+    let s = "
+    (let ([f.1 (lambda () '(1 . 2))])
+        (eq? (f.1) (f.1)))";
     compile(s, "t.s")
 }
 
