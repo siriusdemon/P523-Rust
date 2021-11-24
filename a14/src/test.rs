@@ -27,7 +27,7 @@ fn test_helper(program: &str, filename: &str, expect: &str) {
 
 
 #[test]
-fn compile1() {
+fn compile1_1() {
     let s = "'7";
     test_helper(s, "1-1.s", "7");
     let s = "'()";
@@ -36,6 +36,10 @@ fn compile1() {
     test_helper(s, "1-3.s", "#f");
     let s = "'(1 2 3 4)";
     test_helper(s, "1-4.s", "(1 2 3 4)");
+}
+
+#[test]
+fn compile1_2() {
     let s = "'#5(5 4 3 2 1)";
     test_helper(s, "1-5.s", "#(5 4 3 2 1)");
     let s = "'#2((1 2) (3 4))";
@@ -44,6 +48,10 @@ fn compile1() {
     test_helper(s, "1-7.s", "(#2(1 2) #2(3 4))");
     let s = "'(#3(#t #f 1) #3(#f #t 2))";
     test_helper(s, "1-8.s", "(#3(#t #f 1) #3(#f #t 2))");
+}
+
+#[test]
+fn compile1_3() {
     let s = "(let ([t.496 '10]) (if t.496 t.496 '#f))";
     test_helper(s, "1-9.s", "10");
     let s = "(if '#t (if '45 '7 '#f) '#f)";
@@ -54,12 +62,16 @@ fn compile1() {
     test_helper(s, "1-12.s", "-3");
     let s = "(* '7 '9)";
     test_helper(s, "1-13.s", "63");
+}
+
+#[test]
+fn compile1_4() {
     let s = "(cons '1 '())";
     test_helper(s, "1-14.s", "(1)");
     let s = "(car '(1 2))";
     test_helper(s, "1-15.s", "1");
     let s = "(cdr '(1 2))";
-    test_helper(s, "1-16.s", "2");
+    test_helper(s, "1-16.s", "(2)");
     let s = "(if '#t '1 '2)";
     test_helper(s, "1-17.s", "1");
     let s = "(pair? '(1 2))";
@@ -86,6 +98,10 @@ fn compile1() {
     test_helper(s, "1-28.s", "#t");
     let s = "(procedure? '7)";
     test_helper(s, "1-29.s", "#f");
+}
+
+#[test]
+fn compile1_5() {
     let s = "(<= '1 '8)";
     test_helper(s, "1-30.s", "#t");
     let s = "(<= '8 '1)";
