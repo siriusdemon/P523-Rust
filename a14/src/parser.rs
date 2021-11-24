@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::syntax::Scheme;
-use crate::compiler::{gen_uvar, prim2_scm, prim1_scm, prim3_scm, quote_scm, let_scm};
 use Scheme::*;
 
 #[derive(Debug, Clone)]
@@ -369,12 +368,13 @@ impl Parser {
                 other => elements.push(self.parse_quote_atom()),
             };
         }
-        let mut list = if period { elements.pop().unwrap() } else { quote_scm(EmptyList) };
-        while let Some(scm) = elements.pop() {
-            list = Prim2 ("cons".to_string(), Box::new(scm), Box::new(list));
-        }
+        if !period { elements.push(Quote (Box::new(EmptyList))); }
+        // let mut list = if period { elements.pop().unwrap() } else { quote_scm(EmptyList) };
+        // while let Some(scm) = elements.pop() {
+        //     list = Prim2 ("cons".to_string(), Box::new(scm), Box::new(list));
+        // }
         let _right = self.remove_top();
-        return list;
+        return LiteralList (elements);
     }
 
     fn parse_symbol(&mut self) -> Scheme {
@@ -425,16 +425,17 @@ impl Parser {
             };
         }
         let _right = self.remove_top();
-        let mut bindings = HashMap::new();
-        let tmp = gen_uvar();
-        let alloc = prim1_scm("make-vector".to_string(), quote_scm(Int64 (elements.len() as i64)));
-        bindings.insert(tmp.clone(), alloc);
-        let mut exprs = vec![];
-        for (i, v) in elements.into_iter().enumerate() {
-            exprs.push(prim3_scm("vector-set!".to_string(), Symbol (tmp.clone()), quote_scm(Int64 (i as i64)), v));
-        }
-        exprs.push(Symbol (tmp));
-        return let_scm(bindings, Begin (exprs));
+        // let mut bindings = HashMap::new();
+        // let tmp = gen_uvar();
+        // let alloc = prim1_scm("make-vector".to_string(), quote_scm(Int64 (elements.len() as i64)));
+        // bindings.insert(tmp.clone(), alloc);
+        // let mut exprs = vec![];
+        // for (i, v) in elements.into_iter().enumerate() {
+        //     exprs.push(prim3_scm("vector-set!".to_string(), Symbol (tmp.clone()), quote_scm(Int64 (i as i64)), v));
+        // }
+        // exprs.push(Symbol (tmp));
+        // return let_scm(bindings, Begin (exprs));
+        return LiteralVector (elements);
     }
 
     fn parse_nop(&mut self) -> Scheme {

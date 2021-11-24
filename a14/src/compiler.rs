@@ -48,55 +48,55 @@ const TRUE  :i64 = 0b0000_1110;
 const NIL   :i64 = 0b0001_0110;
 const VOID  :i64 = 0b0001_1110;
 
-pub fn prim1_scm(op: String, v1: Scheme) -> Scheme {
+fn prim1_scm(op: String, v1: Scheme) -> Scheme {
     Scheme::Prim1 (op, Box::new(v1))
 }
 
-pub fn prim2_scm(op: String, v1: Scheme, v2: Scheme) -> Scheme {
+fn prim2_scm(op: String, v1: Scheme, v2: Scheme) -> Scheme {
     Scheme::Prim2 (op, Box::new(v1), Box::new(v2))
 }
 
-pub fn prim3_scm(op: String, v1: Scheme, v2: Scheme, v3: Scheme) -> Scheme {
+fn prim3_scm(op: String, v1: Scheme, v2: Scheme, v3: Scheme) -> Scheme {
     Scheme::Prim3 (op, Box::new(v1), Box::new(v2), Box::new(v3))
 }
 
-pub fn if2_scm(pred: Scheme, b1: Scheme, b2: Scheme) -> Scheme {
+fn if2_scm(pred: Scheme, b1: Scheme, b2: Scheme) -> Scheme {
     Scheme::If (Box::new(pred), Box::new(b1), Box::new(b2))
 }
 
-pub fn set1_scm(sym: Scheme, val: Scheme) -> Scheme {
+fn set1_scm(sym: Scheme, val: Scheme) -> Scheme {
     Scheme::Set (Box::new(sym), Box::new(val))
 }
 
-pub fn mset_scm(v1: Scheme, v2: Scheme, v3: Scheme) -> Scheme {
+fn mset_scm(v1: Scheme, v2: Scheme, v3: Scheme) -> Scheme {
     Scheme::Mset (Box::new(v1), Box::new(v2), Box::new(v3))
 }
 
-pub fn mref_scm(v1: Scheme, v2: Scheme) -> Scheme {
+fn mref_scm(v1: Scheme, v2: Scheme) -> Scheme {
     Scheme::Mref (Box::new(v1), Box::new(v2))
 }
 
-pub fn let_scm(bindings: HashMap<String, Scheme>, e: Scheme) -> Scheme {
+fn let_scm(bindings: HashMap<String, Scheme>, e: Scheme) -> Scheme {
     Scheme::Let (bindings, Box::new(e))
 }
 
-pub fn letrec_scm(bindings: HashMap<String, Scheme>, e: Scheme) -> Scheme {
+fn letrec_scm(bindings: HashMap<String, Scheme>, e: Scheme) -> Scheme {
     Scheme::Letrec (bindings, Box::new(e))
 }
 
-pub fn lambda_scm(args: Vec<String>, e: Scheme) -> Scheme {
+fn lambda_scm(args: Vec<String>, e: Scheme) -> Scheme {
     Scheme::Lambda (args, Box::new(e))
 }
 
-pub fn funcall_scm(func: Scheme, args: Vec<Scheme>) -> Scheme {
+fn funcall_scm(func: Scheme, args: Vec<Scheme>) -> Scheme {
     Scheme::Funcall (Box::new(func), args)
 }
 
-pub fn quote_scm(scm: Scheme) -> Scheme {
+fn quote_scm(scm: Scheme) -> Scheme {
     Scheme::Quote (Box::new(scm))
 }
 
-pub fn uvar_to_label(var: &str) -> String {
+fn uvar_to_label(var: &str) -> String {
     var.replace(".", "$")
 }
 
@@ -113,7 +113,7 @@ fn is_effect_prim(s: &str) -> bool {
     ["set-car!", "set-cdr!", "vector-set!", "procedure-set!"].contains(&s)
 }
 
-pub fn gen_anon() -> String {
+fn gen_anon() -> String {
     gensym("anon.")
 }
 
@@ -147,6 +147,60 @@ impl ParseScheme {
     }
 }
 
+
+pub struct ConvertComplexDatum {}
+impl ConvertComplexDatum {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        self.convert(scm)
+    }
+
+    fn convert(&self, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        match scm {
+            If (box pred, box b1, box b2) => if2_scm(
+                self.convert(pred),
+                self.convert(b1),
+                self.convert(b2),
+            ),
+            Begin (mut exprs) => Begin (
+                exprs.into_iter().map(|e| self.convert(e)).collect()
+            ),
+            Funcall (box Lambda (args, box body), values) if args.len() == values.len() => {
+                let mut bindings = HashMap::new();
+                for (arg, val) in args.into_iter().zip(values) {
+                    bindings.insert(arg, self.convert(val));
+                }
+                return let_scm(bindings, self.convert(body));
+            }
+            Funcall (box func, mut values) => funcall_scm(
+                self.convert(func), 
+                values.into_iter().map(|e| self.convert(e)).collect()
+            ),
+            Let (mut bindings, box body) => {
+                let mut new_bindings = HashMap::new();
+                for (k, v) in bindings.drain() {
+                    new_bindings.insert(k, self.convert(v));
+                }
+                return let_scm(new_bindings, self.convert(body));
+            }
+            Letrec (mut bindings, box body) => {
+                let mut new_bindings = HashMap::new();
+                for (k, v) in bindings.drain() {
+                    new_bindings.insert(k, self.convert(v));
+                }
+                return letrec_scm(new_bindings, self.convert(body));
+            }
+            Lambda (args, box body) => lambda_scm(args, self.convert(body)),
+            Prim1 (op, box e) => prim1_scm(op, self.convert(e)),
+            Prim2 (op, box e1, box e2) => prim2_scm(op, self.convert(e1), self.convert(e2)),
+            Prim3 (op, box e1, box e2, box e3) => prim3_scm(op, self.convert(e1), self.convert(e2), self.convert(e3)),
+            Symbol (s) => Symbol (s),
+            Quote (box imm) => quote_scm(imm),
+            Void => Void,
+            other => panic!("Invalid Program {}", other),
+        }
+    }
+}
 
 pub struct OptimizeDirectCall {}
 impl OptimizeDirectCall {
@@ -1837,7 +1891,7 @@ fn fv_to_index(fv: &str) -> i64 {
     fv[2..].parse().unwrap()
 }
 
-pub fn gensym(prefix: &str) -> String {
+fn gensym(prefix: &str) -> String {
     // When running test, data race happens
     static mut counter :usize = 5000;
     let mut s = String::from(prefix);
@@ -1848,23 +1902,23 @@ pub fn gensym(prefix: &str) -> String {
     return s;
 }
 
-pub fn gen_label() -> String {
+fn gen_label() -> String {
     gensym("tmp$")
 }
 
-pub fn gen_uvar() -> String {
+fn gen_uvar() -> String {
     gensym("t.")
 }
 
-pub fn gen_new_fv() -> String {
+fn gen_new_fv() -> String {
     gensym("nfv.")
 }
 
-pub fn get_rp(name: &str) -> String {
+fn get_rp(name: &str) -> String {
     format!("rp.{}", name.replace("$", ""))
 }
 
-pub fn get_rp_nontail(name: &str) -> String {
+fn get_rp_nontail(name: &str) -> String {
     let salt = gensym("");
     format!("rpnt${}_{}", name.replace(".", "").replace("$", ""), salt)
 }
