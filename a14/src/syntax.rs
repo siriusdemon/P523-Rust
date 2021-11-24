@@ -10,24 +10,27 @@ pub type Frame = HashSet<Vec<String>>;
 fn conflict_graph_formatter(form: &str, conflict_graph: &ConflictGraph, tail: &Expr) -> String {
     let mut cg = vec![];
     for (v, conflicts) in conflict_graph {
-        let seqs: Vec<String> = conflicts.iter().map(|c| format!("{}", c)).collect();
-        let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
-        let seqs_s = seqs_ref.join(" ");
+        let seqs_s = seqs_formatter2(conflicts.iter(), " ");
         let alist = format!("({} {{{}}})", v, seqs_s);
         cg.push(alist);
     }
-    let seqs_ref: Vec<&str> = cg.iter().map(|s| s.as_ref()).collect();
-    let seqs_s = seqs_ref.join(" ");
+    let seqs_s = seqs_formatter2(cg.iter(), " ");
     format!("({} ({})\n  {})", form, seqs_s, tail)
 }
 
-fn seqs_formatter<E: fmt::Display>(form: &str, seqs: impl Iterator<Item=E>,  join: &str, tail: impl fmt::Display) -> String {
+
+fn seqs_formatter<E: fmt::Display>(form: &str, seqs: impl Iterator<Item=E>, join: &str, tail: impl fmt::Display) -> String {
+    let seqs_s = seqs_formatter2(seqs, join);
+    format!("({} ({})\n  {})", form, seqs_s, tail)
+}
+
+
+fn seqs_formatter2<E: fmt::Display>(seqs: impl Iterator<Item=E>, join: &str) -> String {
     let seqs: Vec<String> = seqs.map(|e| format!("{}", e)).collect();
     let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
     let seqs_s = seqs_ref.join(join);
-    format!("({} ({})\n  {})", form, seqs_s, tail)
+    return seqs_s;
 }
-
 
 // ---------------------- Scheme / Expr / Asm --------------------------------------
 #[derive(Debug)]
@@ -53,6 +56,8 @@ pub enum Scheme {
     Int64(i64),
     Bool(bool),
     Quote(Box<Scheme>),
+    LiteralVector(Vec<Scheme>),
+    LiteralList(Vec<Scheme>),
     EmptyList,
     Void,
     Nop,
@@ -75,9 +80,7 @@ impl fmt::Display for Scheme {
                 write!(f, "{}", s)
             }
             Lambda (args, box body) => {
-                let seqs: Vec<String> = args.iter().map(|e| format!("{}", e)).collect();
-                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
-                let seqs_s = seqs_ref.join(" ");
+                let seqs_s = seqs_formatter2(args.iter(), " ");
                 let s = format!("(lambda ({}) {})", seqs_s, body);
                 write!(f, "{}", s)
             },
@@ -91,13 +94,10 @@ impl fmt::Display for Scheme {
             }
             Closures (clos, box tail) => {
                 let seqs: Vec<_> = clos.iter().map(|(uvar, label, fvars)| {
-                    let seqs_f: Vec<String> = fvars.iter().map(|e| format!("{}", e)).collect();
-                    let seqs_fref: Vec<&str> = seqs_f.iter().map(|s| s.as_ref()).collect();
-                    let seqs_fs = seqs_fref.join(" ");
+                    let seqs_fs = seqs_formatter2(fvars.iter(), " ");
                     format!("[{} {} {}]", uvar, label, seqs_fs)
                 }).collect();
-                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
-                let seqs_s = seqs_ref.join(" ");
+                let seqs_s = seqs_formatter2(seqs.iter(), " ");
                 let s = format!("(closures ({})\n{})", seqs_s, tail);
                 write!(f, "{}", s)
             }
@@ -124,14 +124,20 @@ impl fmt::Display for Scheme {
             Mset (box base, box offset, box value) => write!(f, "(mset! {} {} {})", base, offset, value),
             Symbol (s) => write!(f, "{}", s),
             Funcall (box name, args) => {
-                let seqs: Vec<String> = args.iter().map(|e| format!("{}", e)).collect();
-                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
-                let seqs_s = seqs_ref.join(" ");
+                let seqs_s = seqs_formatter2(args.iter(), " ");
                 write!(f, "({} {})", name, seqs_s)
             }
             Quote (box Bool(true)) => write!(f, "'#t"),
             Quote (box Bool(false)) => write!(f, "'#f"),
             Quote (box imm) => write!(f, "'{}", imm),
+            LiteralList (list) => {
+                let seqs_s = seqs_formatter2(list.iter(), " ");
+                write!(f, "({})", seqs_s)
+            }
+            LiteralVector (vector) => {
+                let seqs_s = seqs_formatter2(vector.iter(), " ");
+                write!(f, "#({})", seqs_s)
+            }
             Int64 (i) => write!(f, "{}", i),
             Bool (true) => write!(f, "(true)"),
             Bool (false) => write!(f, "(false)"),
@@ -195,9 +201,7 @@ impl fmt::Display for Expr {
                 write!(f, "{}", s)
             }
             Lambda (label, args, box body) => {
-                let seqs: Vec<String> = args.iter().map(|e| format!("{}", e)).collect();
-                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
-                let seqs_s = seqs_ref.join(" ");
+                let seqs_s = seqs_formatter2(args.iter(), " ");
                 let s = format!("({} (lambda ({}) {}))", label, seqs_s, body);
                 write!(f, "{}", s)
             },
@@ -219,13 +223,10 @@ impl fmt::Display for Expr {
             NewFrames (frames, box tail) => {
                 let mut vs = vec![];
                 for lst in frames.iter() {
-                    let seqs: Vec<String> = lst.iter().map(|e| format!("{}", e)).collect();
-                    let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
-                    let seqs_s = seqs_ref.join(" ");
+                    let seqs_s = seqs_formatter2(lst.iter(), " ");
                     vs.push(format!("({})", seqs_s));
                 }
-                let vs_ref: Vec<&str> = vs.iter().map(|s| s.as_ref()).collect();
-                let vs_s = vs_ref.join(" ");
+                let vs_s = seqs_formatter2(vs.iter(), " ");
                 let s = format!("(new-frames ({}) {})", vs_s, tail);
                 write!(f, "{}", s)
             }
@@ -253,9 +254,7 @@ impl fmt::Display for Expr {
             Mset (box base, box offset, box value) => write!(f, "(mset! {} {} {})", base, offset, value),
             Symbol (s) => write!(f, "{}", s),
             Funcall (box name, args) => {
-                let seqs: Vec<String> = args.iter().map(|e| format!("{}", e)).collect();
-                let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
-                let seqs_s = seqs_ref.join(" ");
+                let seqs_s = seqs_formatter2(args.iter(), " ");
                 write!(f, "({} {})", name, seqs_s)
             }
             Int64 (i) => write!(f, "{}", i),
