@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::syntax::Scheme;
+use crate::compiler::{gen_uvar, prim2_scm, prim1_scm, prim3_scm, quote_scm, let_scm};
 use Scheme::*;
 
 #[derive(Debug, Clone)]
@@ -349,27 +350,26 @@ impl Parser {
     // right now, we have empty list literal only
     fn parse_quote_list(&mut self) -> Scheme {
         let _left = self.remove_top().unwrap();
-        let top = self.top().unwrap().token.as_str();
-        match top {
-            ")" => Quote (Box::new(EmptyList)),
-            other => {
-                let mut elements = vec![];
-                while let Some(ref t) = self.top() {
-                    match t.token.as_str() {
-                        ")" => break,
-                        "(" => elements.push(self.parse_quote_list()),
-                        other =>  elements.push(self.parse_quote_atom()),
-                    };
-                }
-                let _right = self.remove_top();
-                if elements.len() == 0 { return Quote (Box::new(EmptyList)); }
-                let mut list = Quote (Box::new(EmptyList));
-                while let Some(scm) = elements.pop() {
-                    list = Prim2 ("cons".to_string(), Box::new(scm), Box::new(list));
-                }
-                return list;
-            }
+        if self.top().unwrap().token.as_str() == ")" { 
+            let _right = self.remove_top();
+            return Quote (Box::new(EmptyList)); 
         }
+
+        let mut elements = vec![];
+        while let Some(ref t) = self.top() {
+            match t.token.as_str() {
+                ")" => break,
+                "(" => elements.push(self.parse_quote_list()),
+                "#" => elements.push(self.parse_literal()),
+                other => elements.push(self.parse_quote_atom()),
+            };
+        }
+        let _right = self.remove_top();
+        let mut list = Quote (Box::new(EmptyList));
+        while let Some(scm) = elements.pop() {
+            list = Prim2 ("cons".to_string(), Box::new(scm), Box::new(list));
+        }
+        return list;
     }
 
     fn parse_symbol(&mut self) -> Scheme {
@@ -392,10 +392,10 @@ impl Parser {
     fn parse_literal(&mut self) -> Scheme {
         let _hash = self.remove_top();
         let t = self.top().unwrap();
-        if t.token.as_str() == "(" || t.token.as_str() == "[" {
-            return self.parse_literal_list();
+        match t.token.parse::<usize>() {
+            Ok(_len) => self.parse_literal_vector(),
+            Err(e) => self.parse_literal_atom(),
         }
-        return self.parse_literal_atom();
     }
 
     fn parse_literal_atom(&mut self) -> Scheme {
@@ -407,8 +407,29 @@ impl Parser {
         }
     }
 
-    fn parse_literal_list(&mut self) -> Scheme {
-        panic!("There is not literal list!");
+    fn parse_literal_vector(&mut self) -> Scheme {
+        let _len = self.remove_top();
+        let _left = self.remove_top();
+        let mut elements = vec![];
+        while let Some(ref t) = self.top() {
+            match t.token.as_str() {
+                ")" => break,
+                "#" => elements.push(self.parse_literal()),
+                "(" => elements.push(self.parse_quote_list()),
+                other => elements.push(self.parse_quote_atom()),
+            };
+        }
+        let _right = self.remove_top();
+        let mut bindings = HashMap::new();
+        let tmp = gen_uvar();
+        let alloc = prim1_scm("make-vector".to_string(), quote_scm(Int64 (elements.len() as i64)));
+        bindings.insert(tmp.clone(), alloc);
+        let mut exprs = vec![];
+        for (i, v) in elements.into_iter().enumerate() {
+            exprs.push(prim3_scm("vector-set!".to_string(), Symbol (tmp.clone()), quote_scm(Int64 (i as i64)), v));
+        }
+        exprs.push(Symbol (tmp));
+        return let_scm(bindings, Begin (exprs));
     }
 
     fn parse_nop(&mut self) -> Scheme {

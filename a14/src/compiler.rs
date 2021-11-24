@@ -48,55 +48,55 @@ const TRUE  :i64 = 0b0000_1110;
 const NIL   :i64 = 0b0001_0110;
 const VOID  :i64 = 0b0001_1110;
 
-fn prim1_scm(op: String, v1: Scheme) -> Scheme {
+pub fn prim1_scm(op: String, v1: Scheme) -> Scheme {
     Scheme::Prim1 (op, Box::new(v1))
 }
 
-fn prim2_scm(op: String, v1: Scheme, v2: Scheme) -> Scheme {
+pub fn prim2_scm(op: String, v1: Scheme, v2: Scheme) -> Scheme {
     Scheme::Prim2 (op, Box::new(v1), Box::new(v2))
 }
 
-fn prim3_scm(op: String, v1: Scheme, v2: Scheme, v3: Scheme) -> Scheme {
+pub fn prim3_scm(op: String, v1: Scheme, v2: Scheme, v3: Scheme) -> Scheme {
     Scheme::Prim3 (op, Box::new(v1), Box::new(v2), Box::new(v3))
 }
 
-fn if2_scm(pred: Scheme, b1: Scheme, b2: Scheme) -> Scheme {
+pub fn if2_scm(pred: Scheme, b1: Scheme, b2: Scheme) -> Scheme {
     Scheme::If (Box::new(pred), Box::new(b1), Box::new(b2))
 }
 
-fn set1_scm(sym: Scheme, val: Scheme) -> Scheme {
+pub fn set1_scm(sym: Scheme, val: Scheme) -> Scheme {
     Scheme::Set (Box::new(sym), Box::new(val))
 }
 
-fn mset_scm(v1: Scheme, v2: Scheme, v3: Scheme) -> Scheme {
+pub fn mset_scm(v1: Scheme, v2: Scheme, v3: Scheme) -> Scheme {
     Scheme::Mset (Box::new(v1), Box::new(v2), Box::new(v3))
 }
 
-fn mref_scm(v1: Scheme, v2: Scheme) -> Scheme {
+pub fn mref_scm(v1: Scheme, v2: Scheme) -> Scheme {
     Scheme::Mref (Box::new(v1), Box::new(v2))
 }
 
-fn let_scm(bindings: HashMap<String, Scheme>, e: Scheme) -> Scheme {
+pub fn let_scm(bindings: HashMap<String, Scheme>, e: Scheme) -> Scheme {
     Scheme::Let (bindings, Box::new(e))
 }
 
-fn letrec_scm(bindings: HashMap<String, Scheme>, e: Scheme) -> Scheme {
+pub fn letrec_scm(bindings: HashMap<String, Scheme>, e: Scheme) -> Scheme {
     Scheme::Letrec (bindings, Box::new(e))
 }
 
-fn lambda_scm(args: Vec<String>, e: Scheme) -> Scheme {
+pub fn lambda_scm(args: Vec<String>, e: Scheme) -> Scheme {
     Scheme::Lambda (args, Box::new(e))
 }
 
-fn funcall_scm(func: Scheme, args: Vec<Scheme>) -> Scheme {
+pub fn funcall_scm(func: Scheme, args: Vec<Scheme>) -> Scheme {
     Scheme::Funcall (Box::new(func), args)
 }
 
-fn quote_scm(scm: Scheme) -> Scheme {
+pub fn quote_scm(scm: Scheme) -> Scheme {
     Scheme::Quote (Box::new(scm))
 }
 
-fn uvar_to_label(var: &str) -> String {
+pub fn uvar_to_label(var: &str) -> String {
     var.replace(".", "$")
 }
 
@@ -113,7 +113,7 @@ fn is_effect_prim(s: &str) -> bool {
     ["set-car!", "set-cdr!", "vector-set!", "procedure-set!"].contains(&s)
 }
 
-fn gen_anon() -> String {
+pub fn gen_anon() -> String {
     gensym("anon.")
 }
 
@@ -1837,7 +1837,7 @@ fn fv_to_index(fv: &str) -> i64 {
     fv[2..].parse().unwrap()
 }
 
-fn gensym(prefix: &str) -> String {
+pub fn gensym(prefix: &str) -> String {
     // When running test, data race happens
     static mut counter :usize = 5000;
     let mut s = String::from(prefix);
@@ -1848,23 +1848,23 @@ fn gensym(prefix: &str) -> String {
     return s;
 }
 
-fn gen_label() -> String {
+pub fn gen_label() -> String {
     gensym("tmp$")
 }
 
-fn gen_uvar() -> String {
+pub fn gen_uvar() -> String {
     gensym("t.")
 }
 
-fn gen_new_fv() -> String {
+pub fn gen_new_fv() -> String {
     gensym("nfv.")
 }
 
-fn get_rp(name: &str) -> String {
+pub fn get_rp(name: &str) -> String {
     format!("rp.{}", name.replace("$", ""))
 }
 
-fn get_rp_nontail(name: &str) -> String {
+pub fn get_rp_nontail(name: &str) -> String {
     let salt = gensym("");
     format!("rpnt${}_{}", name.replace(".", "").replace("$", ""), salt)
 }

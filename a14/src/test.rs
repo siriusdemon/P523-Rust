@@ -43,11 +43,11 @@ fn compile1_2() {
     let s = "'#5(5 4 3 2 1)";
     test_helper(s, "1-5.s", "#(5 4 3 2 1)");
     let s = "'#2((1 2) (3 4))";
-    test_helper(s, "1-6.s", "#2((1 2) (3 4))");
+    test_helper(s, "1-6.s", "#((1 2) (3 4))");
     let s = "'(#2(1 2) #2(3 4))";
-    test_helper(s, "1-7.s", "(#2(1 2) #2(3 4))");
+    test_helper(s, "1-7.s", "(#(1 2) #(3 4))");
     let s = "'(#3(#t #f 1) #3(#f #t 2))";
-    test_helper(s, "1-8.s", "(#3(#t #f 1) #3(#f #t 2))");
+    test_helper(s, "1-8.s", "(#(#t #f 1) #(#f #t 2))");
 }
 
 #[test]
