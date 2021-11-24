@@ -401,13 +401,20 @@ impl IntroduceProceduraPrimitives {
             Closures (clos, box body) => {
                 let mut bindings = HashMap::new();
                 let mut exprs = vec![];
-                for (cp, code, fvars) in clos {
-                    let length = fvars.len();
-                    let alloc = prim2_scm("make-procedure".to_string(), Symbol (code), quote_scm(Int64 (length as i64)));
-                    for (i, fvar) in fvars.into_iter().enumerate() {
-                        exprs.push(prim3_scm("procedure-set!".to_string(), Symbol (cp.clone()),  quote_scm(Int64 (i as i64)), Symbol (fvar)));
+                for (clos_cp, clos_code, clos_fvars) in clos {
+                    let length = clos_fvars.len();
+                    let alloc = prim2_scm("make-procedure".to_string(), Symbol (clos_code), quote_scm(Int64 (length as i64)));
+                    for (i, clos_fvar) in clos_fvars.into_iter().enumerate() {
+                        // check if such a clos_fvar is yet another fvar in fvars
+                        let var = if fvars.contains(&clos_fvar) { 
+                            let index = self.find_freevar_index(fvars, &clos_fvar);
+                            prim2_scm("procedure-ref".to_string(), Symbol (cp.to_string()), quote_scm(Int64 (index)))
+                        } else { 
+                            Symbol (clos_fvar) 
+                        };
+                        exprs.push(prim3_scm("procedure-set!".to_string(), Symbol (clos_cp.clone()),  quote_scm(Int64 (i as i64)), var));
                     }
-                    bindings.insert(cp, alloc);
+                    bindings.insert(clos_cp, alloc);
                 }     
                 exprs.push(self.intro(body, cp, fvars));
                 return let_scm(bindings, Begin (exprs));
