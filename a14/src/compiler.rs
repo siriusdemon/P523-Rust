@@ -371,6 +371,57 @@ impl UncoverAssigned {
     }
 }
 
+// simple version of purify-letrec
+pub struct PurifyLetrecSimple {}
+impl PurifyLetrecSimple {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        self.purify(scm)
+    }
+
+    fn purify(&self, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        match scm {
+            If (box pred, box b1, box b2) => if2_scm(
+                self.purify(pred),
+                self.purify(b1),
+                self.purify(b2),
+            ),
+            Begin (mut exprs) => Begin (
+                exprs.into_iter().map(|e| self.purify(e)).collect()
+            ),
+            Funcall (box Lambda (args, box body), values) if args.len() == values.len() => {
+                let mut bindings = HashMap::new();
+                for (arg, val) in args.into_iter().zip(values) {
+                    bindings.insert(arg, self.purify(val));
+                }
+                return let_scm(bindings, self.purify(body));
+            }
+            Funcall (box func, mut values) => funcall_scm(
+                self.purify(func), 
+                values.into_iter().map(|e| self.purify(e)).collect()
+            ),
+            Let (mut bindings, box body) => {
+                let mut new_bindings = HashMap::new();
+                for (k, v) in bindings.drain() {
+                    new_bindings.insert(k, self.purify(v));
+                }
+                return let_scm(new_bindings, self.purify(body));
+            }
+            Letrec (mut bindings, box body) => {
+                // TODO
+            }
+            Lambda (args, box body) => lambda_scm(args, self.purify(body)),
+            Prim1 (op, box e) => prim1_scm(op, self.purify(e)),
+            Prim2 (op, box e1, box e2) => prim2_scm(op, self.purify(e1), self.purify(e2)),
+            Prim3 (op, box e1, box e2, box e3) => prim3_scm(op, self.purify(e1), self.purify(e2), self.purify(e3)),
+            Set (box sym, box e) => set1_scm(sym, self.purify(e)),
+            Symbol (s) => Symbol (s),
+            Quote (box imm) => quote_scm(imm),
+            Void => Void,
+            other => panic!("Invalid Program {}", other),
+        }
+    }
+}
 
 
 pub struct OptimizeDirectCall {}
