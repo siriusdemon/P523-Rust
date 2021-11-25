@@ -147,3 +147,74 @@ fn compile3() {
         (eq? (f.1) (f.1)))";
     test_helper(s, "3.s", "#t");
 }
+
+#[test]
+fn compile4() {
+    let s = "
+    (let ([f.1 (lambda () '(#2(1 2) #2(1 2) (1 2)))])
+        (eq? (f.1) (f.1)))";
+    test_helper(s, "4.s", "#t");
+}
+
+#[test]
+fn compile5() {
+    let s = "
+    (letrec ([f.1 (lambda (x.2) 
+                    (begin
+                      (set! f.1 '10)
+                      f.1))])
+      (f.1))";
+    test_helper(s, "5.s", "10");
+}
+
+#[test]
+fn compile6() {
+    let s = "    
+    (letrec ([x.1 (lambda () (begin (set! x.1 '2) '1))])
+      (let ([y.2 (x.1)])
+        (let ([z.3 x.1])
+          (cons y.2 z.3))))";
+    test_helper(s, "6.s", "(1 . 2)");
+}
+
+#[test]
+fn compile7() {
+    let s = "
+    (letrec ([x.1 (lambda () (begin (set! y.2 '2) '1))]
+             [y.2 (lambda () '100)])
+      (let ([z.3 (y.2)])
+        (let ([u.4 (x.1)])
+          (let ([w.5 y.2])
+            (cons z.3 (cons w.5 u.4))))))";
+    test_helper(s, "7.s", "(100 2 . 1)");
+}
+
+#[test]
+fn compile8_useful_for_uncover_assigned() {
+    let s = "
+    (let ([x.3 '10] [y.1 '11] [z.2 '12])
+      (let ([f.9 (lambda (u.7 v.6)
+                    (begin
+                      (set! x.3 u.7)
+                      (+ x.3 v.6)))]
+            [g.8 (lambda (r.5 s.4)
+                    (begin
+                      (set! y.1 (+ z.2 s.4))
+                      y.1))])
+        (* (f.9 '1 '2) (g.8 '3 '4))))";
+    test_helper(s, "8-1.s", "48");
+    let s = "
+    (let ([x.3 '10] [y.1 '11] [z.2 '12])
+      (let ([f.7 '#f]
+            [g.6 (lambda (r.5 s.4)
+                    (begin
+                      (set! y.1 (+ z.2 s.4))
+                        y.1))])
+        (begin
+          (set! f.7 (lambda (u.9 v.8)
+                        (begin
+                          (set! v.8 u.9)
+                          (+ x.3 v.8))))
+          (* (f.7 '1 '2) (g.6 '3 '4)))))";
+    test_helper(s, "8-2.s", "176");
+}

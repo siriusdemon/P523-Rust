@@ -38,6 +38,7 @@ pub enum Scheme {
     Letrec(HashMap<String, Scheme>, Box<Scheme>),
     Locals(HashSet<String>, Box<Scheme>),
     Let(HashMap<String, Scheme>, Box<Scheme>),
+    Assigned(HashSet<String>, Box<Scheme>),
     Lambda(Vec<String>, Box<Scheme>),
     Free(Vec<String>, Box<Scheme>),
     Bindfree(Vec<String>, Box<Scheme>),
@@ -106,6 +107,10 @@ impl fmt::Display for Scheme {
                 let seqs_ref: Vec<&str> = seqs.iter().map(|s| s.as_ref()).collect();
                 let seqs_s = seqs_ref.join(" ");
                 let s = format!("(let ({})\n {})", seqs_s, tail);
+                write!(f, "{}", s)
+            }
+            Assigned (vars, box body) => {
+                let s = seqs_formatter("assigned", vars.iter(), " ", body);
                 write!(f, "{}", s)
             }
             Begin ( exprs ) => {

@@ -117,6 +117,17 @@ fn gen_anon() -> String {
     gensym("anon.")
 }
 
+fn union_set(sets: Vec<HashSet<String>>) -> HashSet<String> {
+    let mut new_set = HashSet::new();
+    for mut set in sets {
+        for e in set.drain() {
+            new_set.insert(e);
+        }
+    }
+    return new_set;
+}
+
+
 fn make_nopless_begin(exprs: Vec<Scheme>) -> Scheme {
     use Scheme::*;
     fn helper(exprs: Vec<Scheme>, collector: &mut Vec<Scheme>) {
@@ -146,6 +157,7 @@ impl ParseScheme {
         return scm;
     }
 }
+
 
 
 pub struct ConvertComplexDatum {}
@@ -206,6 +218,7 @@ impl ConvertComplexDatum {
             Prim2 (op, box e1, box e2) => prim2_scm(op, self.convert(e1, literals), self.convert(e2, literals)),
             Prim3 (op, box e1, box e2, box e3) => 
                 prim3_scm(op, self.convert(e1, literals), self.convert(e2, literals), self.convert(e3, literals)),
+            Set (box e1, box e2) => set1_scm(e1, self.convert(e2, literals)),
             Symbol (s) => Symbol (s),
             Quote (box imm) => quote_scm(imm),
             Void => Void,
@@ -258,6 +271,107 @@ impl ConvertComplexDatum {
         return let_scm(bindings, Begin (exprs));
     }
 }
+
+pub struct UncoverAssigned {}
+impl UncoverAssigned {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        let (scm, _set) = self.uncover(scm);
+        return scm;
+    }
+
+    fn uncover(&self, scm: Scheme) -> (Scheme, HashSet<String>) {
+        use Scheme::*;
+        match scm {
+            If (box pred, box b1, box b2) => {
+                let (pred, pset) = self.uncover(pred);
+                let (b1, b1set) = self.uncover(b1);
+                let (b2, b2set) = self.uncover(b2);
+                let new_set = union_set(vec![pset, b1set, b2set]);
+                return (if2_scm(pred, b1, b2), new_set);
+            },
+            Begin (mut exprs) => {
+                let mut sets = vec![];
+                exprs = exprs.into_iter().map(|e| {
+                    let (e, set) = self.uncover(e);
+                    sets.push(set);
+                    e
+                }).collect();
+                let new_set = union_set(sets);
+                return (Begin (exprs), new_set)
+            }
+            Funcall (box func, mut values) => {
+                let (func, fset) = self.uncover(func);
+                let mut sets = vec![fset];
+                values = values.into_iter().map(|e| {
+                    let (e, set) = self.uncover(e);
+                    sets.push(set);
+                    e
+                }).collect();
+                let new_set = union_set(sets);
+                return (funcall_scm(func, values), new_set);
+            }
+            Let (mut bindings, box body) => {
+                let (body, mut bset) = self.uncover(body);
+                let mut new_bindings = HashMap::new();
+                let mut sets = vec![bset];
+                for (k, v) in bindings.drain() {
+                    let (e, set) = self.uncover(v);
+                    sets.push(set);
+                    new_bindings.insert(k, e);
+                }
+                let mut new_set = union_set(sets);
+                let assigned: HashSet<String> = new_set.drain_filter(|v| new_bindings.contains_key(v)).collect();
+                return (let_scm(new_bindings, Assigned (assigned, Box::new(body))), new_set);
+            }
+            Letrec (mut bindings, box body) => {
+                let (body, mut bset) = self.uncover(body);
+                let mut new_bindings = HashMap::new();
+                let mut sets = vec![bset];
+                for (k, v) in bindings.drain() {
+                    let (e, set) = self.uncover(v);
+                    sets.push(set);
+                    new_bindings.insert(k, e);
+                }
+                let mut new_set = union_set(sets);
+                let assigned: HashSet<String> = new_set.drain_filter(|v| new_bindings.contains_key(v)).collect();
+                return (letrec_scm(new_bindings, Assigned (assigned, Box::new(body))), new_set);
+            }
+            Lambda (args, box body) => {
+                let (body, mut new_set) = self.uncover(body);
+                let assigned: HashSet<String> = new_set.drain_filter(|v| args.contains(v)).collect();
+                return (lambda_scm(args, Assigned (assigned, Box::new(body))), new_set);
+            }
+            Prim1 (op, box e) => {
+                let (e, new_set) = self.uncover(e);
+                return (prim1_scm(op, e), new_set);
+            }
+            Prim2 (op, box e1, box e2) => {
+                let (e1, e1_set) = self.uncover(e1);
+                let (e2, e2_set) = self.uncover(e2);
+                let new_set = union_set(vec![e1_set, e2_set]);
+                return (prim2_scm(op, e1, e2), new_set);
+            }
+            Prim3 (op, box e1, box e2, box e3) => {
+                let (e1, e1_set) = self.uncover(e1);
+                let (e2, e2_set) = self.uncover(e2);
+                let (e3, e3_set) = self.uncover(e3);
+                let new_set = union_set(vec![e1_set, e2_set, e3_set]);
+                return (prim3_scm(op, e1, e2, e3), new_set);
+            }
+            Set (box Symbol (sym), box e) => {
+                let (e, mut new_set) = self.uncover(e);
+                new_set.insert(sym.clone());
+                return (set1_scm(Symbol (sym), e), new_set);
+            }
+            Symbol (s) => (Symbol (s), HashSet::new()),
+            Quote (box imm) => (quote_scm(imm), HashSet::new()),
+            Void => (Void, HashSet::new()),
+            other => panic!("Invalid Program {}", other),
+        }
+    }
+}
+
+
 
 pub struct OptimizeDirectCall {}
 impl OptimizeDirectCall {
@@ -536,13 +650,7 @@ impl UncoverFree {
     }
 
     fn union_freeset(&self, sets: Vec<HashSet<String>>) -> HashSet<String> {
-        let mut new_set = HashSet::new();
-        for mut set in sets {
-            for e in set.drain() {
-                new_set.insert(e);
-            }
-        }
-        return new_set;
+        return union_set(sets);
     }
 }
 
@@ -4329,7 +4437,7 @@ pub fn everybody_home(expr: &Expr) -> bool {
         }
     }
     if let Letrec (lambdas, box body) = expr {
-        return lambdas.iter().all(|e| lambda_home(e)) && body_home(body)
+        return lambdas.iter().all(|e| lambda_home(e)) && body_home(body);
     }
     panic!("Invalid Program {}", expr);
 }
@@ -4339,6 +4447,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("ParseScheme", &expr);
     let expr = ConvertComplexDatum{}.run(expr);
     compile_formatter("ConvertComplexDatum", &expr);
+    let expr = UncoverAssigned{}.run(expr);
+    compile_formatter("UncoverAssigned", &expr);
     let expr = OptimizeDirectCall{}.run(expr);
     compile_formatter("OptimizeDirectCall", &expr);
     let expr = RemoveAnonymousLambda{}.run(expr);
