@@ -400,17 +400,37 @@ impl PurifyLetrecSimple {
                 self.purify(func), 
                 values.into_iter().map(|e| self.purify(e)).collect()
             ),
-            Let (mut bindings, box body) => {
+            Let (mut bindings, box Assigned (assigned, box body)) => {
                 let mut new_bindings = HashMap::new();
                 for (k, v) in bindings.drain() {
                     new_bindings.insert(k, self.purify(v));
                 }
-                return let_scm(new_bindings, self.purify(body));
+                return let_scm(new_bindings, Assigned (assigned, Box::new(self.purify(body))));
             }
-            Letrec (mut bindings, box body) => {
-                // TODO
+            Letrec (mut bindings, box Assigned (assigned, box body)) => {
+                if assigned.is_empty() { return letrec_scm(bindings, self.purify(body)); }    
+
+                let mut void_bindings = HashMap::new();
+                let mut val_bindings = HashMap::new();
+                let mut exprs = vec![];
+                for (k, mut val) in bindings.drain() {
+                    void_bindings.insert(k.clone(), Void);
+                    val = self.purify(val);
+                    let tmp = gen_uvar();
+                    val_bindings.insert(tmp.clone(), val);
+                    exprs.push(set1_scm(Symbol (k), Symbol (tmp)));
+                }
+                let_scm(void_bindings, 
+                    Assigned (assigned, Box::new(
+                        Begin (vec![
+                            let_scm(val_bindings, 
+                                Assigned (HashSet::new(), Box::new(
+                                    Begin (exprs)))),
+                            self.purify(body)
+                        ])
+                    )))
             }
-            Lambda (args, box body) => lambda_scm(args, self.purify(body)),
+            Lambda (args, box Assigned (assigned, box body)) => lambda_scm(args, Assigned (assigned, Box::new(self.purify(body)))),
             Prim1 (op, box e) => prim1_scm(op, self.purify(e)),
             Prim2 (op, box e1, box e2) => prim2_scm(op, self.purify(e1), self.purify(e2)),
             Prim3 (op, box e1, box e2, box e3) => prim3_scm(op, self.purify(e1), self.purify(e2), self.purify(e3)),
