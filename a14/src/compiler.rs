@@ -389,13 +389,6 @@ impl PurifyLetrecSimple {
             Begin (mut exprs) => Begin (
                 exprs.into_iter().map(|e| self.purify(e)).collect()
             ),
-            Funcall (box Lambda (args, box body), values) if args.len() == values.len() => {
-                let mut bindings = HashMap::new();
-                for (arg, val) in args.into_iter().zip(values) {
-                    bindings.insert(arg, self.purify(val));
-                }
-                return let_scm(bindings, self.purify(body));
-            }
             Funcall (box func, mut values) => funcall_scm(
                 self.purify(func), 
                 values.into_iter().map(|e| self.purify(e)).collect()
@@ -443,6 +436,41 @@ impl PurifyLetrecSimple {
     }
 }
 
+pub struct ConvertAssignment {}
+impl ConvertAssignment {
+    pub fn run(&self, scm) -> Scheme {
+        self.convert(scm)
+    }
+
+    fn convert(&self, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        match scm {
+            If (box pred, box b1, box b2) => if2_scm(
+                self.convert(pred),
+                self.convert(b1),
+                self.convert(b2),
+            ),
+            Begin (mut exprs) => Begin (
+                exprs.into_iter().map(|e| self.convert(e)).collect()
+            ),
+            Funcall (box func, mut values) => funcall_scm(
+                self.convert(func), 
+                values.into_iter().map(|e| self.convert(e)).collect()
+            ),
+            Let (mut bindings, box Assigned (assigned, box body)) => { }
+            Letrec (bindings, box body) => letrec_scm(bindings, Box::new(body)),
+            Lambda (args, box Assigned (assigned, box body)) => lambda_scm(args, Assigned (assigned, Box::new(self.convert(body)))),
+            Prim1 (op, box e) => prim1_scm(op, self.convert(e)),
+            Prim2 (op, box e1, box e2) => prim2_scm(op, self.convert(e1), self.convert(e2)),
+            Prim3 (op, box e1, box e2, box e3) => prim3_scm(op, self.convert(e1), self.convert(e2), self.convert(e3)),
+            Set (box sym, box e) => set1_scm(sym, self.convert(e)),
+            Symbol (s) => Symbol (s),
+            Quote (box imm) => quote_scm(imm),
+            Void => Void,
+            other => panic!("Invalid Program {}", other),
+        }
+    }
+}
 
 pub struct OptimizeDirectCall {}
 impl OptimizeDirectCall {
