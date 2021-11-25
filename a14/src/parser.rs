@@ -369,10 +369,6 @@ impl Parser {
             };
         }
         if !period { elements.push(Quote (Box::new(EmptyList))); }
-        // let mut list = if period { elements.pop().unwrap() } else { quote_scm(EmptyList) };
-        // while let Some(scm) = elements.pop() {
-        //     list = Prim2 ("cons".to_string(), Box::new(scm), Box::new(list));
-        // }
         let _right = self.remove_top();
         return LiteralList (elements);
     }

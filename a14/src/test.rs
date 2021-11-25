@@ -137,5 +137,13 @@ fn compile2() {
     let s = "
     (let ([f.1 (lambda () '(1 . 2))])
         (eq? (f.1) (f.1)))";
-    test_helper(s, "1-2.s", "#t");
+    test_helper(s, "2.s", "#t");
+}
+
+#[test]
+fn compile3() {
+    let s = "
+    (let ([f.1 (lambda () '#2(1 2))])
+        (eq? (f.1) (f.1)))";
+    test_helper(s, "3.s", "#t");
 }

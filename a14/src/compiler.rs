@@ -151,54 +151,111 @@ impl ParseScheme {
 pub struct ConvertComplexDatum {}
 impl ConvertComplexDatum {
     pub fn run(&self, scm: Scheme) -> Scheme {
-        self.convert(scm)
+        // collect literals 
+        let mut literals: Vec<(usize, String, Vec<Scheme>)> = vec![];
+        let mut scm = self.convert(scm, &mut literals);
+        // construct literals only once, in order
+        while let Some((ty, uvar, elements)) = literals.pop() {
+            if ty == 0 { // this is a list
+                scm = self.construct_list(uvar, elements, scm);
+            } else { // it is a vector
+                scm = self.construct_vector(uvar, elements, scm);
+            }
+        }
+        return scm;
     }
 
-    fn convert(&self, scm: Scheme) -> Scheme {
+    fn convert(&self, scm: Scheme, literals: &mut Vec<(usize, String, Vec<Scheme>)>) -> Scheme {
         use Scheme::*;
         match scm {
             If (box pred, box b1, box b2) => if2_scm(
-                self.convert(pred),
-                self.convert(b1),
-                self.convert(b2),
+                self.convert(pred, literals),
+                self.convert(b1, literals),
+                self.convert(b2, literals),
             ),
             Begin (mut exprs) => Begin (
-                exprs.into_iter().map(|e| self.convert(e)).collect()
+                exprs.into_iter().map(|e| self.convert(e, literals)).collect()
             ),
             Funcall (box Lambda (args, box body), values) if args.len() == values.len() => {
                 let mut bindings = HashMap::new();
                 for (arg, val) in args.into_iter().zip(values) {
-                    bindings.insert(arg, self.convert(val));
+                    bindings.insert(arg, self.convert(val, literals));
                 }
-                return let_scm(bindings, self.convert(body));
+                return let_scm(bindings, self.convert(body, literals));
             }
             Funcall (box func, mut values) => funcall_scm(
-                self.convert(func), 
-                values.into_iter().map(|e| self.convert(e)).collect()
+                self.convert(func, literals), 
+                values.into_iter().map(|e| self.convert(e, literals)).collect()
             ),
             Let (mut bindings, box body) => {
                 let mut new_bindings = HashMap::new();
                 for (k, v) in bindings.drain() {
-                    new_bindings.insert(k, self.convert(v));
+                    new_bindings.insert(k, self.convert(v, literals));
                 }
-                return let_scm(new_bindings, self.convert(body));
+                return let_scm(new_bindings, self.convert(body, literals));
             }
             Letrec (mut bindings, box body) => {
                 let mut new_bindings = HashMap::new();
                 for (k, v) in bindings.drain() {
-                    new_bindings.insert(k, self.convert(v));
+                    new_bindings.insert(k, self.convert(v, literals));
                 }
-                return letrec_scm(new_bindings, self.convert(body));
+                return letrec_scm(new_bindings, self.convert(body, literals));
             }
-            Lambda (args, box body) => lambda_scm(args, self.convert(body)),
-            Prim1 (op, box e) => prim1_scm(op, self.convert(e)),
-            Prim2 (op, box e1, box e2) => prim2_scm(op, self.convert(e1), self.convert(e2)),
-            Prim3 (op, box e1, box e2, box e3) => prim3_scm(op, self.convert(e1), self.convert(e2), self.convert(e3)),
+            Lambda (args, box body) => lambda_scm(args, self.convert(body, literals)),
+            Prim1 (op, box e) => prim1_scm(op, self.convert(e, literals)),
+            Prim2 (op, box e1, box e2) => prim2_scm(op, self.convert(e1, literals), self.convert(e2, literals)),
+            Prim3 (op, box e1, box e2, box e3) => 
+                prim3_scm(op, self.convert(e1, literals), self.convert(e2, literals), self.convert(e3, literals)),
             Symbol (s) => Symbol (s),
             Quote (box imm) => quote_scm(imm),
             Void => Void,
+            LiteralList (mut list) => {
+                list = list.into_iter().map(|e| self.convert(e, literals)).collect();
+                for (_ty, key, val) in literals.iter() {
+                    if _ty == &0 && val == &list {
+                        return Symbol (key.to_string());
+                    }
+                }
+                let tmp = gen_uvar();
+                literals.push((0, tmp.clone(), list));
+                return Symbol (tmp);
+            }
+            LiteralVector (mut elements) => {
+                elements = elements.into_iter().map(|e| self.convert(e, literals)).collect();
+                for (_ty, key, val) in literals.iter() {
+                    if _ty == &1 && val == &elements {
+                        return Symbol (key.to_string());
+                    }
+                }
+                let tmp = gen_uvar();
+                literals.push((1, tmp.clone(), elements));
+                return Symbol (tmp);
+            }
             other => panic!("Invalid Program {}", other),
         }
+    }
+
+    fn construct_list(&self, tmp: String, mut list: Vec<Scheme>, scm: Scheme) -> Scheme {
+        let mut cons = list.pop().unwrap();
+        while let Some(scm) = list.pop() {
+            cons = prim2_scm("cons".to_string(), scm, cons);
+        }
+        let mut bindings = HashMap::new();
+        bindings.insert(tmp, cons);
+        return let_scm(bindings, scm);
+    }
+
+    fn construct_vector(&self, tmp: String, mut elements: Vec<Scheme>, scm: Scheme) -> Scheme {
+        use Scheme::*;
+        let mut bindings = HashMap::new();
+        let alloc = prim1_scm("make-vector".to_string(), quote_scm(Int64 (elements.len() as i64)));
+        let mut exprs = vec![];
+        for (i, v) in elements.into_iter().enumerate() {
+            exprs.push(prim3_scm("vector-set!".to_string(), Symbol (tmp.clone()), quote_scm(Int64 (i as i64)), v));
+        }
+        bindings.insert(tmp, alloc);
+        exprs.push(scm);
+        return let_scm(bindings, Begin (exprs));
     }
 }
 
@@ -4280,6 +4337,8 @@ pub fn everybody_home(expr: &Expr) -> bool {
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseScheme{}.run(s);
     compile_formatter("ParseScheme", &expr);
+    let expr = ConvertComplexDatum{}.run(expr);
+    compile_formatter("ConvertComplexDatum", &expr);
     let expr = OptimizeDirectCall{}.run(expr);
     compile_formatter("OptimizeDirectCall", &expr);
     let expr = RemoveAnonymousLambda{}.run(expr);

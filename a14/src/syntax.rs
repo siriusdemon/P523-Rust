@@ -33,7 +33,7 @@ fn seqs_formatter2<E: fmt::Display>(seqs: impl Iterator<Item=E>, join: &str) -> 
 }
 
 // ---------------------- Scheme / Expr / Asm --------------------------------------
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Scheme {
     Letrec(HashMap<String, Scheme>, Box<Scheme>),
     Locals(HashSet<String>, Box<Scheme>),
