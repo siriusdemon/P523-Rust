@@ -62,7 +62,7 @@ impl Scanner {
             }
             ';' => {
                 i = i + 1;  // skip ;
-                while self.expr[i] != '\n' {
+                while self.expr[i] != '\n' { // can you find a bug here? I fix it in A?
                     i = i + 1;
                 }
                 *col = 0;
