@@ -258,7 +258,9 @@ impl Parser {
         let _if = self.remove_top();
         let cond = self.parse_expr();
         let b1 = self.parse_expr();
-        let b2 = self.parse_expr();
+        let b2 = if self.top().unwrap().token.as_str() == ")" {
+            Void
+        } else { self.parse_expr() };
         let _right = self.remove_top();
         return Scheme::If(Box::new(cond), Box::new(b1), Box::new(b2));
     }

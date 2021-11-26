@@ -508,3 +508,11 @@ fn compile29() {
     let s = "(let ([x 10]) (begin (+ 1 x)))";
     test_helper(s, "29.s", "11");
 }
+
+#[test]
+fn compile30() {
+    let s = "(if 10 20)";
+    test_helper(s, "30-1.s", "20");
+    let s = "(if #f 20)";
+    test_helper(s, "30-2.s", "#<void>");
+}
