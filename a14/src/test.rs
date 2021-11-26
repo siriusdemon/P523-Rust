@@ -293,3 +293,24 @@ fn compile12() {
             x.2))))";
     test_helper(s, "c12.s", "2");
 }
+
+#[test]
+fn compile13() {
+    let s = "    
+    (cons
+      (let ([f.463 (lambda (h.462 v.461) (* h.462 v.461))])
+        (let ([k.465 (lambda (x.464) (+ x.464 '5))])
+          (letrec ([x.466 '15])
+            (letrec ([g.467 (lambda (x.468) (+ '1 x.468))])
+              (k.465 (g.467 (let ([g.469 '3]) (f.463 g.469 x.466))))))))
+      '())";
+    test_helper(s, "c13.s", "(51)");
+}
+
+#[test]
+fn compile14() {
+    let s = "
+    (letrec ([x.1 '15])
+      x.1)";
+    test_helper(s, "c14.s", "15");
+}

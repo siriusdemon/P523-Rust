@@ -372,8 +372,8 @@ impl UncoverAssigned {
 }
 
 // simple version of purify-letrec
-pub struct PurifyLetrecSimple {}
-impl PurifyLetrecSimple {
+pub struct PurifyLetrec {}
+impl PurifyLetrec {
     pub fn run(&self, scm: Scheme) -> Scheme {
         self.purify(scm)
     }
@@ -401,8 +401,6 @@ impl PurifyLetrecSimple {
                 return let_scm(new_bindings, Assigned (assigned, Box::new(self.purify(body))));
             }
             Letrec (mut bindings, box Assigned (assigned, box body)) => {
-                if assigned.is_empty() { return letrec_scm(bindings, self.purify(body)); }    
-
                 let mut void_bindings = HashMap::new();
                 let mut val_bindings = HashMap::new();
                 let mut exprs = vec![];
@@ -4606,8 +4604,8 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("ConvertComplexDatum", &expr);
     let expr = UncoverAssigned{}.run(expr);
     compile_formatter("UncoverAssigned", &expr);
-    let expr = PurifyLetrecSimple{}.run(expr);
-    compile_formatter("PurifyLetrecSimple", &expr);
+    let expr = PurifyLetrec{}.run(expr);
+    compile_formatter("PurifyLetrec", &expr);
     let expr = ConvertAssignment{}.run(expr);
     compile_formatter("ConvertAssignment", &expr);
     let expr = OptimizeDirectCall{}.run(expr);
