@@ -116,6 +116,15 @@ fn compile3() {
 }
 
 #[test]
+fn compile4() {
+    let s = "(begin (set! rax 10))";
+    let filename = "c4.s";
+    compile(s, filename);
+    let r = run_helper(filename);
+    assert_eq!(r.as_str(), "10\n");
+}
+
+#[test]
 #[should_panic()]
 fn invalid1() {
     let s = "5";
