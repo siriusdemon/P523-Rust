@@ -1,5 +1,9 @@
 # Adventure
 
+In order to make your adventure more fun. I remove some code and leave some test fails. You are expected to fix them. Don't worry, they are very trivial.
+
+### Intro
+
 P523 的前半段是在实现一个类似 C 语言的 UIL（通用中间语言），后半段是在实现 Scheme。P523-Rust 的策略是，定义 Scheme、Expr、Asm 三种语言。前半段，实现从 Expr 编译到 Asm，后半段，实现从 Scheme 编译到 Expr。 
 
 ```rs

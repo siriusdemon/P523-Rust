@@ -29,7 +29,8 @@ fn token1() {
 #[test]
 fn token2() {
     let s = "(begin (set! rax -8))";
-    let r = vec!["(", "begin", "(", "set!", "rax", "-8", ")", ")"];
+    // YOUR CODE HERE!
+    let r = vec![""];
     assert!(test_token_helper(s, r));
 }
 
@@ -101,7 +102,8 @@ fn compile2() {
     let filename = "c2.s";
     compile(s, filename);
     let r = run_helper(filename);
-    assert_eq!(r.as_str(), "120\n");
+    // YOUR CODE HERE!
+    assert_eq!(r.as_str(), "");
 }
 
 #[test]

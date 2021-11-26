@@ -40,10 +40,8 @@ impl CompileToAsm {
     }
 
     fn asm_binop(&self, op: &str) -> &str {
-        match op {
-            "+" => "addq", "-" => "subq", "*" => "imulq",
-            _ => panic!("unsupport op {}", op),
-        }
+        // YOUR CODE HERE!
+        "+"
     }
 
     fn string_to_reg(&self, s: &str) -> Asm {
