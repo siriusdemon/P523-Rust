@@ -407,11 +407,15 @@ impl PurifyLetrecSimple {
                 let mut val_bindings = HashMap::new();
                 let mut exprs = vec![];
                 for (k, mut val) in bindings.drain() {
-                    void_bindings.insert(k.clone(), Void);
-                    val = self.purify(val);
-                    let tmp = gen_uvar();
-                    val_bindings.insert(tmp.clone(), val);
-                    exprs.push(set1_scm(Symbol (k), Symbol (tmp)));
+                    if assigned.contains(&k) {
+                        void_bindings.insert(k.clone(), Void);
+                        val = self.purify(val);
+                        let tmp = gen_uvar();
+                        val_bindings.insert(tmp.clone(), val);
+                        exprs.push(set1_scm(Symbol (k), Symbol (tmp)));
+                    } else {
+                        val_bindings.insert(k, self.purify(val));
+                    }
                 }
                 let_scm(void_bindings, 
                     Assigned (assigned, Box::new(
@@ -438,33 +442,87 @@ impl PurifyLetrecSimple {
 
 pub struct ConvertAssignment {}
 impl ConvertAssignment {
-    pub fn run(&self, scm) -> Scheme {
-        self.convert(scm)
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        let mut assigned_sets = HashSet::new();
+        self.convert(scm, &mut assigned_sets)
     }
 
-    fn convert(&self, scm: Scheme) -> Scheme {
+    fn convert(&self, scm: Scheme, assigned_sets: &mut HashSet<String>) -> Scheme {
         use Scheme::*;
         match scm {
             If (box pred, box b1, box b2) => if2_scm(
-                self.convert(pred),
-                self.convert(b1),
-                self.convert(b2),
+                self.convert(pred, assigned_sets),
+                self.convert(b1, assigned_sets),
+                self.convert(b2, assigned_sets),
             ),
             Begin (mut exprs) => Begin (
-                exprs.into_iter().map(|e| self.convert(e)).collect()
+                exprs.into_iter().map(|e| self.convert(e, assigned_sets)).collect()
             ),
             Funcall (box func, mut values) => funcall_scm(
-                self.convert(func), 
-                values.into_iter().map(|e| self.convert(e)).collect()
+                self.convert(func, assigned_sets), 
+                values.into_iter().map(|e| self.convert(e, assigned_sets)).collect()
             ),
-            Let (mut bindings, box Assigned (assigned, box body)) => { }
-            Letrec (bindings, box body) => letrec_scm(bindings, Box::new(body)),
-            Lambda (args, box Assigned (assigned, box body)) => lambda_scm(args, Assigned (assigned, Box::new(self.convert(body)))),
-            Prim1 (op, box e) => prim1_scm(op, self.convert(e)),
-            Prim2 (op, box e1, box e2) => prim2_scm(op, self.convert(e1), self.convert(e2)),
-            Prim3 (op, box e1, box e2, box e3) => prim3_scm(op, self.convert(e1), self.convert(e2), self.convert(e3)),
-            Set (box sym, box e) => set1_scm(sym, self.convert(e)),
-            Symbol (s) => Symbol (s),
+            Let (mut bindings, box Assigned (assigned, box body)) => {
+                if assigned.is_empty() { 
+                    let mut new_bindings = HashMap::new();
+                    for (k, val) in bindings.drain() {
+                        new_bindings.insert(k, self.convert(val, assigned_sets));
+                    }
+                    return let_scm(new_bindings, self.convert(body, assigned_sets)); 
+                }
+                let mut rename_bindings = HashMap::new();
+                let mut assign_bindings = HashMap::new();
+                for (k, mut val) in bindings.drain() {
+                    // val should not see the assigned variables in this form
+                    val = self.convert(val, assigned_sets);
+                    // replace the assigned var as a cons
+                    let new_k = if assigned.contains(&k) {
+                        // collect assigned variable
+                        assigned_sets.insert(k.clone());
+                        // rename assigned variable
+                        let tmp = gen_uvar();
+                        assign_bindings.insert(k, prim2_scm("cons".to_string(), Symbol (tmp.clone()), quote_scm(EmptyList)));
+                        tmp
+                    } else { k };
+                    rename_bindings.insert(new_k, val);
+                }
+                return let_scm(rename_bindings, let_scm(assign_bindings, self.convert(body, assigned_sets)));
+            }
+            Letrec (mut bindings, box body) => {
+                let mut new_bindings = HashMap::new();
+                for (k, val) in bindings.drain() {
+                    new_bindings.insert(k, self.convert(val, assigned_sets));
+                }
+                return letrec_scm(new_bindings, self.convert(body, assigned_sets));
+            }
+            Lambda (args, box Assigned (assigned, box body)) => {
+                if assigned.is_empty() { return lambda_scm(args, self.convert(body, assigned_sets)); }
+                let mut new_args = vec![];
+                let mut assigned_bindings = HashMap::new();
+                for a in args {
+                    if assigned.contains(&a) {
+                        assigned_sets.insert(a.clone());
+                        let tmp = gen_uvar();
+                        assigned_bindings.insert(a, prim2_scm("cons".to_string(), Symbol (tmp.clone()), quote_scm(EmptyList)));
+                        new_args.push(tmp);
+                    } else {
+                        new_args.push(a);
+                    }
+                }
+                return lambda_scm(new_args, let_scm(assigned_bindings, self.convert(body, assigned_sets)));
+            }
+            Prim1 (op, box e) => prim1_scm(op, self.convert(e, assigned_sets)),
+            Prim2 (op, box e1, box e2) => prim2_scm(op, self.convert(e1, assigned_sets), self.convert(e2, assigned_sets)),
+            Prim3 (op, box e1, box e2, box e3) 
+                => prim3_scm(op, self.convert(e1, assigned_sets), self.convert(e2, assigned_sets), self.convert(e3, assigned_sets)),
+            Set (box sym, box e) => prim2_scm("set-car!".to_string(), sym, self.convert(e, assigned_sets)),
+            Symbol (s) => {
+                if assigned_sets.contains(&s) {
+                    return prim1_scm("car".to_string(), Symbol (s));
+                } else {
+                    return Symbol (s);
+                }
+            }
             Quote (box imm) => quote_scm(imm),
             Void => Void,
             other => panic!("Invalid Program {}", other),
@@ -4548,6 +4606,10 @@ pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     compile_formatter("ConvertComplexDatum", &expr);
     let expr = UncoverAssigned{}.run(expr);
     compile_formatter("UncoverAssigned", &expr);
+    let expr = PurifyLetrecSimple{}.run(expr);
+    compile_formatter("PurifyLetrecSimple", &expr);
+    let expr = ConvertAssignment{}.run(expr);
+    compile_formatter("ConvertAssignment", &expr);
     let expr = OptimizeDirectCall{}.run(expr);
     compile_formatter("OptimizeDirectCall", &expr);
     let expr = RemoveAnonymousLambda{}.run(expr);

@@ -137,7 +137,7 @@ fn compile2() {
     let s = "
     (let ([f.1 (lambda () '(1 . 2))])
         (eq? (f.1) (f.1)))";
-    test_helper(s, "2.s", "#t");
+    test_helper(s, "c2.s", "#t");
 }
 
 #[test]
@@ -145,7 +145,7 @@ fn compile3() {
     let s = "
     (let ([f.1 (lambda () '#2(1 2))])
         (eq? (f.1) (f.1)))";
-    test_helper(s, "3.s", "#t");
+    test_helper(s, "c3.s", "#t");
 }
 
 #[test]
@@ -153,7 +153,7 @@ fn compile4() {
     let s = "
     (let ([f.1 (lambda () '(#2(1 2) #2(1 2) (1 2)))])
         (eq? (f.1) (f.1)))";
-    test_helper(s, "4.s", "#t");
+    test_helper(s, "c4.s", "#t");
 }
 
 #[test]
@@ -161,10 +161,10 @@ fn compile5() {
     let s = "
     (letrec ([f.1 (lambda (x.2) 
                     (begin
-                      (set! f.1 '10)
+                      (set! f.1 x.2)
                       f.1))])
-      (f.1))";
-    test_helper(s, "5.s", "10");
+      (f.1 '10))";
+    test_helper(s, "c5.s", "10");
 }
 
 #[test]
@@ -174,19 +174,26 @@ fn compile6() {
       (let ([y.2 (x.1)])
         (let ([z.3 x.1])
           (cons y.2 z.3))))";
-    test_helper(s, "6.s", "(1 . 2)");
+    test_helper(s, "c6.s", "(1 . 2)");
 }
 
 #[test]
-fn compile7() {
+fn compile7_1() {
     let s = "
-    (letrec ([x.1 (lambda () (begin (set! y.2 '2) '1))]
-             [y.2 (lambda () '100)])
-      (let ([z.3 (y.2)])
-        (let ([u.4 (x.1)])
-          (let ([w.5 y.2])
-            (cons z.3 (cons w.5 u.4))))))";
-    test_helper(s, "7.s", "(100 2 . 1)");
+    (letrec ([x.1 (lambda () (f.2))]
+             [f.2 (lambda () '10)])
+      (x.1))";
+    test_helper(s, "c7-1.s", "10");
+}
+
+
+#[test]
+fn compile7_2() {
+    let s = "
+    (letrec ([x.1 (lambda () (begin (set! f.2 '10) f.2))]
+             [f.2 (lambda () '10)])
+      (x.1))";
+    test_helper(s, "c7-2.s", "10");
 }
 
 #[test]
@@ -202,7 +209,7 @@ fn compile8_useful_for_uncover_assigned() {
                       (set! y.1 (+ z.2 s.4))
                       y.1))])
         (* (f.9 '1 '2) (g.8 '3 '4))))";
-    test_helper(s, "8-1.s", "48");
+    test_helper(s, "c8-1.s", "48");
     let s = "
     (let ([x.3 '10] [y.1 '11] [z.2 '12])
       (let ([f.7 '#f]
@@ -216,5 +223,73 @@ fn compile8_useful_for_uncover_assigned() {
                           (set! v.8 u.9)
                           (+ x.3 v.8))))
           (* (f.7 '1 '2) (g.6 '3 '4)))))";
-    test_helper(s, "8-2.s", "176");
+    test_helper(s, "c8-2.s", "176");
+}
+
+#[test]
+fn compile9() {
+    let s = "    
+    (letrec ([filter.1 (lambda (pred?.2 ls.3)
+                         (if (null? ls.3) 
+                             '()
+                             (if (pred?.2 (car ls.3))
+                                 (filter.1 pred?.2 (cdr ls.3))
+                                 (cons (car ls.3) 
+                                       (filter.1 pred?.2 (cdr ls.3))))))])
+      (filter.1 (lambda (x.4) (< x.4 '0)) '(3 -5 91 6 -32 8)))";
+    test_helper(s, "c9.s", "(3 91 6 8)");
+}
+
+#[test]
+fn compile10() {
+    let s = "    
+    (letrec ([add.0 (lambda (n.2)
+                      (lambda (n.3)
+                        (+ n.2 n.3)))]
+             [map.1 (lambda (fn.4 ls.5)
+                      (if (null? ls.5)
+                          '()
+                          (cons (fn.4 (car ls.5)) (map.1 fn.4 (cdr ls.5)))))]
+             [map.9 (lambda (fn.10 fnls.11 ls.12)
+                      (if (null? ls.12)
+                          '()
+                          (cons (fn.10 (car fnls.11) 
+                                       (car ls.12)) 
+                                (map.9 fn.10 (cdr fnls.11) (cdr ls.12)))))])
+      (let ([ls.6 '(1 2 3 4 5 6)])
+        (map.9 (lambda (fn.7 elem.8) (fn.7 elem.8)) 
+            (map.1 add.0 ls.6) ls.6)))";
+    test_helper(s, "c10.s", "(2 4 6 8 10 12)");
+}
+
+
+// v.4 '#3(0) is not supported in my impl
+#[test]
+#[should_panic()]
+fn compile11() {
+    let s = "    
+    (let [(x.1 '(4))
+          (y.2 '(1 2 3))
+          (v.4 '#3(0))]
+      (letrec [(z.3 (cons y.2 x.1))]
+        (begin
+          (vector-set! v.4 '0 z.3)
+          (set! x.1 '(3))
+          (vector-set! v.4 '1 z.3)
+          (vector-set! v.4 '2 (cons y.2 x.1))
+          v.4)))";
+    test_helper(s, "c11.s", "");
+}
+
+#[test]
+fn compile12() {
+    let s = "
+    (let ([x.1 '0])
+      (begin
+        (let ([x.2 '1])
+          (begin 
+            (set! x.1 (+ x.1 '1))
+            (set! x.2 (+ x.2 x.1))
+            x.2))))";
+    test_helper(s, "c12.s", "2");
 }
