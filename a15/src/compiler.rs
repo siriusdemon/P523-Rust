@@ -152,7 +152,6 @@ impl ParseScheme {
     pub fn run(&self, scm: &str) -> Scheme {
         let scanner = Scanner::new(scm);
         let tokens = scanner.scan();
-        println!("{:?}", tokens);
         let parser = Parser::new(tokens);
         let scm = parser.parse();
         return scm;
@@ -244,6 +243,34 @@ impl ConvertComplexDatum {
                 let tmp = gen_uvar();
                 literals.push((1, tmp.clone(), elements));
                 return Symbol (tmp);
+            }
+            PrimN (op, mut exprs) => {
+                match op.as_str() {
+                    "and" => {
+                        if exprs.len() == 0 { return quote_scm(Bool (true)); }
+                        if exprs.len() == 1 { return exprs.pop().unwrap(); }
+                        let mut b1 = exprs.pop().unwrap();
+                        let mut b2 = quote_scm(Bool (false));
+                        while let Some(pred) = exprs.pop() {
+                            b1 = if2_scm(pred, b1, b2);
+                            b2 = quote_scm(Bool (false));
+                        }
+                        return b1;
+                    }
+                    "or" => {
+                        if exprs.len() == 0 { return quote_scm(Bool (false)); }
+                        if exprs.len() == 1 { return exprs.pop().unwrap(); }
+                        let mut b2 = exprs.pop().unwrap();
+                        while let Some(b1) = exprs.pop() {
+                            let mut bindings = HashMap::new();
+                            let tmp = gen_uvar();
+                            bindings.insert(tmp.clone(), b1);
+                            b2 = let_scm(bindings, if2_scm(Symbol (tmp.clone()), Symbol (tmp), b2));
+                        }
+                        return b2;
+                    }
+                    other => panic!("Unexpected op {} in PrimN", other),
+                }
             }
             other => panic!("Invalid Program {}", other),
         }

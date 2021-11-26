@@ -165,13 +165,14 @@ impl Parser {
             "if" => self.parse_if(),
             "let" => self.parse_let(),
             "car" | "cdr" | "make-vector" | "vector-length" | "procedure?" |
-            "boolean?" | "fixnum?" | "null?" | "pair?" | "vector?"
+            "boolean?" | "fixnum?" | "null?" | "pair?" | "vector?" | "not"
                 => self.parse_prim1(),
             "+" | "-" | "*" | "logor" | "logand" | "sra" |
             "=" | ">" | "<" | ">=" | "<=" | "eq?" |
             "cons" | "vector-ref" | "set-car!" | "set-cdr!"
                 => self.parse_prim2(),
             "vector-set!" => self.parse_prim3(),
+            "and" | "or" => self.parse_primn(),
             "nop" => self.parse_nop(),
             "void" => self.parse_void(),
             "true" | "false" => self.parse_bool(),
@@ -323,6 +324,21 @@ impl Parser {
         Scheme::Prim3(op.unwrap().token, Box::new(e1), Box::new(e2), Box::new(e3))
     }
 
+    fn parse_primn(&mut self) -> Scheme {
+        let op = self.remove_top().unwrap().token;
+        let mut exprs = vec![];
+        while let Some(ref t) = self.top() {
+            if t.token.as_str() != ")" {
+                let expr = self.parse_expr();
+                exprs.push(expr);
+            } else {
+                let _right = self.remove_top();
+                return Scheme::PrimN (op, exprs);
+            }
+        } 
+        panic!("Parse Funcall, unexpected eof");
+    }
+
     fn parse_atom(&mut self) -> Scheme {
         let token = &self.top().unwrap().token;
         let chars: Vec<char> = token.chars().collect();
@@ -330,6 +346,7 @@ impl Parser {
             '\'' => self.parse_quote(),
             '0' ..= '9' => Quote (Box::new(self.parse_integer())),
             '-' => Quote (Box::new(self.parse_integer())),
+            '#' => self.parse_literal(),
             e => self.parse_symbol(),
         }
     }
