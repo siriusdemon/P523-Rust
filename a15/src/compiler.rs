@@ -214,6 +214,10 @@ impl ConvertComplexDatum {
                 return letrec_scm(new_bindings, self.convert(body, literals));
             }
             Lambda (args, box body) => lambda_scm(args, self.convert(body, literals)),
+            Prim1 (op, box e) if op.as_str() == "not" => {
+                let e = self.convert(e, literals);
+                return if2_scm(e, quote_scm(Bool (false)), quote_scm(Bool (true)));
+            }
             Prim1 (op, box e) => prim1_scm(op, self.convert(e, literals)),
             Prim2 (op, box e1, box e2) => prim2_scm(op, self.convert(e1, literals), self.convert(e2, literals)),
             Prim3 (op, box e1, box e2, box e3) => 
@@ -245,6 +249,7 @@ impl ConvertComplexDatum {
                 return Symbol (tmp);
             }
             PrimN (op, mut exprs) => {
+                exprs = exprs.into_iter().map(|e| self.convert(e, literals)).collect();
                 match op.as_str() {
                     "and" => {
                         if exprs.len() == 0 { return quote_scm(Bool (true)); }

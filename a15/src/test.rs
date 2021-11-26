@@ -330,6 +330,15 @@ fn compile15() {
 }
 
 #[test]
+fn compile15_3() {
+    let s = "(or () #f)";
+    test_helper(s, "c15-3.s", "()");
+    let s = "(and #t 45 7 '#(1 2 3))";
+    test_helper(s, "c15-4.s", "#(1 2 3)");
+}
+
+
+#[test]
 fn compile16() {
     let s = "(if (+ 3 5) '7 8)";
     test_helper(s, "c16-1.s", "7");
@@ -461,4 +470,11 @@ fn compile26() {
     test_helper(s, "c26-1.s", "#(1 2 3)");
     let s = "'#((1 2) 3)";
     test_helper(s, "c26-2.s", "#((1 2) 3)");
+}
+#[test]
+fn compile27() {
+    let s = "(not #f)";
+    test_helper(s, "c27-1.s", "#t");
+    let s = "(not 10)";
+    test_helper(s, "c27-2.s", "#f");
 }
