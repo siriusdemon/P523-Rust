@@ -471,10 +471,34 @@ fn compile26() {
     let s = "'#((1 2) 3)";
     test_helper(s, "c26-2.s", "#((1 2) 3)");
 }
+
 #[test]
 fn compile27() {
     let s = "(not #f)";
     test_helper(s, "c27-1.s", "#t");
     let s = "(not 10)";
     test_helper(s, "c27-2.s", "#f");
+}
+
+#[test]
+fn compile28_1() {
+    let s = "(let ([v (make-vector 2)]) (vector-length v) 7)";
+    test_helper(s, "28-1.s", "7");
+}
+#[test]
+fn compile28_2() {
+    let s = "(let ([v (make-vector 2)]) (vector-ref v 0) 7)";
+    test_helper(s, "28-2.s", "7");
+}
+
+#[test]
+fn compile28_3() {
+    let s = "(letrec () (= 7 8) 7)";
+    test_helper(s, "28-3.s", "7");
+}
+
+#[test]
+fn compile28_4() {
+    let s = "((lambda (x) (+ 1 2) (+ 1 x)) 10)";
+    test_helper(s, "28-4.s", "11");
 }

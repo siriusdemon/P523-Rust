@@ -188,13 +188,6 @@ impl ConvertComplexDatum {
             Begin (mut exprs) => Begin (
                 exprs.into_iter().map(|e| self.convert(e, literals)).collect()
             ),
-            Funcall (box Lambda (args, box body), values) if args.len() == values.len() => {
-                let mut bindings = HashMap::new();
-                for (arg, val) in args.into_iter().zip(values) {
-                    bindings.insert(arg, self.convert(val, literals));
-                }
-                return let_scm(bindings, self.convert(body, literals));
-            }
             Funcall (box func, mut values) => funcall_scm(
                 self.convert(func, literals), 
                 values.into_iter().map(|e| self.convert(e, literals)).collect()
