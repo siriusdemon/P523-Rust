@@ -502,3 +502,9 @@ fn compile28_4() {
     let s = "((lambda (x) (+ 1 2) (+ 1 x)) 10)";
     test_helper(s, "28-4.s", "11");
 }
+
+#[test]
+fn compile29() {
+    let s = "(let ([x 10]) (begin (+ 1 x)))";
+    test_helper(s, "29.s", "11");
+}
