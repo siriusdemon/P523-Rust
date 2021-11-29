@@ -18,6 +18,49 @@ P523 和 EoC 写的编译器都是 nanopass 的风格。
 
 EoC 有配置的视频和教程，而且本身引用了很多资源。我觉得是个很不错的开始。详情见它的[官网](https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/)。
 
+### P523-Rust
+
+事实证明，Rust 挺适合写 P523。虽然代码量比 Scheme 高出好几倍。
+
+
+```rs
+// A15
+main.rs             : 11
+compiler.rs         : 4521
+parser.rs           : 464
+syntax.rs           : 321
+test.rs             : 1047
+----------------------------
+total               : 6364
+```
+
+由于这次我没有写博客（机智！），只写了引导（误导）。而且代码里也出现了很多错误，但我没有一一修正，而是总是留在后续 assignments 再修正。这不是我故意如此，而是因为我测试得不够，所以一些错误总是在后面才发现。但我想没什么人会看我的代码，应该没有关系。而且我已经在引导中说明了，所以也算是有个交待吧。
+
+P523-Rust 在 A15 时，可以编译以下的代码
+
+```lisp
+    (letrec ([make-param (lambda (val)
+                           (let ([x val])
+                             (letrec ([param (lambda (set val)
+                                               (if set (set! x val) x))])
+                               param)))])
+      (let ([p (make-param 10)])
+        (p #t 15)
+        (p #f #f)))
+```
+
+一个不合法的例子是这样的
+
+```rs
+#[test]
+#[should_panic("variable f unbound")]
+fn invalid88() {
+    let s = "(let ([f (lambda (x) (if (= x 0) 1 (* x (f (- x 1)))))]) (f 10))";
+    test_helper(s, "i88.s", "!");
+}
+```
+
+
 ### Rust-One-Piece
 
 Rust-One-Piece 是一年前我所写的 build-your-own-x 风格的教程。遗憾的是写到一半就写不下去了，原因有很多，但我觉得其中一个重要的原因是，我一边写代码还在一边写博客，这样失败的概率就很高了。因为出错的成本变大了。当发现已经错得离谱的时候，已经太晚。
