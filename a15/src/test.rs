@@ -433,6 +433,7 @@ fn compile22() {
 }
 
 #[test]
+#[should_panic()]
 fn compile23() {
     let s = "    
     (let ([quote (lambda (x) x)]
@@ -515,4 +516,45 @@ fn compile30() {
     test_helper(s, "30-1.s", "20");
     let s = "(if #f 20)";
     test_helper(s, "30-2.s", "#<void>");
+}
+
+#[test]
+fn compile31() {
+    let s = "
+    (let ([x 10])
+      (let ([x (lambda (x) x)])
+        (x 2)))";
+    test_helper(s, "31-1.s", "2");
+    let s = "
+    (let ([x 10])
+      (letrec ([x (lambda (x) x)])
+        (x 2)))";
+    test_helper(s, "31-2.s", "2");
+}
+
+
+#[test]
+#[should_panic()]
+fn compile32() {
+    let s = "
+    (let ([x 10])
+      (let ([y (lambda (z) 
+                  (if (< z 0)
+                      1
+                      (+ 1 (y (- z 1)))))])
+        (y x)))";
+    test_helper(s, "c32.s", "12");
+}
+
+#[test]
+#[should_panic()]
+fn compile33() {
+    let s = "
+    (let ([x 10])
+      (letrec ([y (lambda (z) 
+                  (if (< z 0)
+                      1
+                      (+ 1 (y (- z 1)))))])
+        (y x)))";
+    test_helper(s, "c33.s", "12");
 }

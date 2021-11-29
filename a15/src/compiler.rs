@@ -3,6 +3,7 @@ use std::fs::File;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::vec::IntoIter;
+use std::rc::Rc;
 
 use crate::syntax::{Scheme, Expr, Asm, ConflictGraph, Frame};
 use crate::parser::{Scanner, Parser};
@@ -158,7 +159,49 @@ impl ParseScheme {
     }
 }
 
+pub struct UniquifyVariable {}
 
+pub struct SymTable {
+    pub map: HashMap<String, String>,
+    env: Option<Rc<SymTable>>,
+}
+
+impl SymTable {
+    pub fn new() -> Self {
+        SymTable {
+            map: HashMap::new(),
+            env: None
+        }
+    }
+    pub fn lookup(&self, x: &str) -> &str {
+        if let Some(h) = self.map.get(x) {
+            return h;
+        } else if let Some(env) = &self.env {
+            return env.lookup(x);
+        } else {
+            panic!("variable {} unbound", x);
+        }
+    }
+
+    pub fn bind(&mut self, var: String, val: String) -> Option<String> {
+        return self.map.insert(var, val); 
+    }
+
+    pub fn extend(map: HashMap<String, String>, table: &Rc<SymTable>) -> Self {
+        SymTable { map, env: Some(Rc::clone(table)) }
+    }
+}
+
+
+impl UniquifyVariable {
+    pub fn run(&self, scm: Scheme) -> Scheme {
+        self.uniquify(scm)
+    }
+
+    fn uniquify(&self, scm: Scheme) -> Scheme {
+        scm
+    }
+}
 
 pub struct ConvertComplexDatum {}
 impl ConvertComplexDatum {
