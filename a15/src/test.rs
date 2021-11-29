@@ -392,7 +392,7 @@ fn compile19() {
       (let ([p (make-param 10)])
         (p #t 15)
         (p #f #f)))";
-    test_helper(s, "c19.s", "15");
+    test_helper(s, "c19.s", "25");
 }
 
 #[test]

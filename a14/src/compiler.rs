@@ -393,6 +393,13 @@ impl PurifyLetrec {
                 }
                 return let_scm(new_bindings, Assigned (assigned, Box::new(self.purify(body))));
             }
+            Letrec (mut bindings, box Assigned (assigned, box body)) if assigned.len() == 0 => {
+                let mut new_bindings = HashMap::new();
+                for (k, v) in bindings.drain() {
+                    new_bindings.insert(k, self.purify(v));
+                }
+                return letrec_scm(new_bindings, self.purify(body));
+            }
             Letrec (mut bindings, box Assigned (assigned, box body)) => {
                 let mut void_bindings = HashMap::new();
                 let mut val_bindings = HashMap::new();
@@ -671,11 +678,21 @@ impl SanitizeBindingForms {
                 return let_scm(let_bindings, letrec_scm(letrec_bindings, body));
             }
             Letrec (mut bindings, box body) => {
-                let mut new_bindings = HashMap::new();
+                let mut let_bindings = HashMap::new();
+                let mut letrec_bindings = HashMap::new();
                 for (k, v) in bindings.drain() {
-                    new_bindings.insert(k, self.sanitize(v));
+                    let v = self.sanitize(v);
+                    if let Lambda (_args, _body) = &v {
+                        letrec_bindings.insert(k, v);
+                    } else {
+                        let_bindings.insert(k, v);
+                    }
                 }
-                return letrec_scm(new_bindings, self.sanitize(body));
+                let body = self.sanitize(body);
+                if let_bindings.is_empty() && letrec_bindings.is_empty() { return body; }
+                if letrec_bindings.is_empty() { return let_scm(let_bindings, body); }
+                if let_bindings.is_empty() { return letrec_scm(letrec_bindings, body); }
+                return let_scm(let_bindings, letrec_scm(letrec_bindings, body));
             }
             Lambda (args, box body) => lambda_scm(args, self.sanitize(body)),
             Prim1 (op, box e) => prim1_scm(op, self.sanitize(e)),
