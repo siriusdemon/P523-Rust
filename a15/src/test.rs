@@ -94,10 +94,14 @@ fn compile1_4() {
     test_helper(s, "1-26.s", "#t");
     let s = "(fixnum? '())";
     test_helper(s, "1-27.s", "#f");
-    let s = "(procedure? (lambda (x.495) x.495))";
-    test_helper(s, "1-28.s", "#t");
     let s = "(procedure? '7)";
     test_helper(s, "1-29.s", "#f");
+}
+
+#[test]
+fn compile1_42() {
+    let s = "(procedure? (lambda (x) x))";
+    test_helper(s, "1-28.s", "#t");
 }
 
 #[test]
@@ -448,6 +452,7 @@ fn compile23() {
 }
 
 #[test]
+#[should_panic()]
 fn compile24() {
     let s = "    
     (let ([begin (lambda (x y) (+ x y))]
@@ -527,9 +532,9 @@ fn compile31() {
     test_helper(s, "31-1.s", "2");
     let s = "
     (let ([x 10])
-      (letrec ([x (lambda (x) x)])
-        (x 2)))";
-    test_helper(s, "31-2.s", "2");
+      (letrec ([x (lambda () x)])
+        (x)))";
+    test_helper(s, "31-2.s", "#<procedure>");
 }
 
 
@@ -547,7 +552,6 @@ fn compile32() {
 }
 
 #[test]
-#[should_panic()]
 fn compile33() {
     let s = "
     (let ([x 10])
@@ -557,4 +561,17 @@ fn compile33() {
                       (+ 1 (y (- z 1)))))])
         (y x)))";
     test_helper(s, "c33.s", "12");
+}
+
+#[test]
+fn compile34() {
+    let s = "
+    (let ([x 1])
+      (letrec ([x 2]
+               [f (lambda (z) (+ x z))]
+               [even? (lambda (n) (if (= 0 n) #t (odd? (- n 1))))]
+               [odd? (lambda (n) (if (= 1 n) #t (even? (- n 1))))])
+        (let ([c (f 2)])
+          (even? c))))";
+    test_helper(s, "c34.s", "#t");
 }

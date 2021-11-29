@@ -188,18 +188,92 @@ impl SymTable {
     }
 
     pub fn extend(map: HashMap<String, String>, table: &Rc<SymTable>) -> Self {
-        SymTable { map, env: Some(Rc::clone(table)) }
+        SymTable { map, env: Some(Rc::clone(&table)) }
     }
 }
 
 
 impl UniquifyVariable {
     pub fn run(&self, scm: Scheme) -> Scheme {
-        self.uniquify(scm)
+        let symtable = Rc::new(SymTable::new());
+        return self.uniquify(scm, symtable);
     }
 
-    fn uniquify(&self, scm: Scheme) -> Scheme {
-        scm
+    fn uniquify(&self, scm: Scheme, mut symtable: Rc<SymTable>) -> Scheme {
+        use Scheme::*;
+        match scm {
+            If (box pred, box b1, box b2) => if2_scm(
+                self.uniquify(pred, Rc::clone(&symtable)),
+                self.uniquify(b1, Rc::clone(&symtable)),
+                self.uniquify(b2, symtable),
+            ),
+            Begin (mut exprs) => Begin (
+                exprs.into_iter().map(|e| self.uniquify(e, Rc::clone(&symtable))).collect()
+            ),
+            Funcall (box func, mut values) => funcall_scm(
+                self.uniquify(func, Rc::clone(&symtable)), 
+                values.into_iter().map(|e| self.uniquify(e, Rc::clone(&symtable))).collect()
+            ),
+            Let (mut bindings, box body) => {
+                let mut new_bindings = HashMap::new();
+                let mut mapping = HashMap::new();
+                for (k, v) in bindings.drain() {
+                    let new_v = self.uniquify(v, Rc::clone(&symtable));
+                    let new_k = gen_uvar();
+                    new_bindings.insert(new_k.clone(), new_v);
+                    mapping.insert(k, new_k);
+                }
+                symtable = Rc::new(SymTable::extend(mapping, &symtable));
+                return let_scm(new_bindings, self.uniquify(body, symtable));
+            }
+            Letrec (mut bindings, box body) => {
+                let mut new_bindings = HashMap::new();
+                // update symtable firstly
+                let mut mapping = HashMap::new();
+                for k in bindings.keys() {
+                    mapping.insert(k.clone(), gen_uvar());
+                }
+                symtable = Rc::new(SymTable::extend(mapping, &symtable));
+                // update bindings later
+                for (k, v) in bindings.drain() {
+                    let new_k = symtable.lookup(&k);
+                    new_bindings.insert(new_k.to_string(), self.uniquify(v, Rc::clone(&symtable)));
+                }
+                return letrec_scm(new_bindings, self.uniquify(body, symtable));
+            }
+            Lambda (args, box body) => {
+                let mut mapping = HashMap::new();
+                let mut new_args = vec![];
+                for a in args {
+                    let new_a = gen_uvar();
+                    new_args.push(new_a.clone());
+                    mapping.insert(a, new_a);
+                }
+                symtable = Rc::new(SymTable::extend(mapping, &symtable));
+                return lambda_scm(new_args, self.uniquify(body, symtable));
+            }
+            Prim1 (op, box e) => prim1_scm(op, self.uniquify(e, symtable)),
+            Prim2 (op, box e1, box e2) => prim2_scm(op, self.uniquify(e1, Rc::clone(&symtable)), self.uniquify(e2, symtable)),
+            Prim3 (op, box e1, box e2, box e3) => 
+                prim3_scm(op, self.uniquify(e1, Rc::clone(&symtable)), self.uniquify(e2, Rc::clone(&symtable)), self.uniquify(e3, symtable)),
+            Set (box e1, box e2) => set1_scm(self.uniquify(e1, Rc::clone(&symtable)), self.uniquify(e2, symtable)),
+            Symbol (s) => Symbol (symtable.lookup(&s).to_string()),
+            Quote (box imm) => quote_scm(imm),
+            Void => Void,
+            LiteralList (mut list) => {
+                list = list.into_iter().map(|e| self.uniquify(e, Rc::clone(&symtable))).collect();
+                return LiteralList (list);
+            }
+            LiteralVector (mut elements) => {
+                elements = elements.into_iter().map(|e| self.uniquify(e, Rc::clone(&symtable))).collect();
+                return LiteralVector (elements);
+            }
+            PrimN (op, mut exprs) => {
+                exprs = exprs.into_iter().map(|e| self.uniquify(e, Rc::clone(&symtable))).collect();
+                return PrimN (op, exprs);
+            }
+            other => panic!("Invalid Program {}", other),
+        }
     }
 }
 
@@ -4669,6 +4743,8 @@ pub fn everybody_home(expr: &Expr) -> bool {
 pub fn compile(s: &str, filename: &str) -> std::io::Result<()>  {
     let expr = ParseScheme{}.run(s);
     compile_formatter("ParseScheme", &expr);
+    let expr = UniquifyVariable{}.run(expr);
+    compile_formatter("UniquifyVariable", &expr);
     let expr = ConvertComplexDatum{}.run(expr);
     compile_formatter("ConvertComplexDatum", &expr);
     let expr = UncoverAssigned{}.run(expr);
