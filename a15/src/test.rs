@@ -392,7 +392,7 @@ fn compile19() {
       (let ([p (make-param 10)])
         (p #t 15)
         (p #f #f)))";
-    test_helper(s, "c19.s", "25");
+    test_helper(s, "c19.s", "15");
 }
 
 #[test]
@@ -574,4 +574,617 @@ fn compile34() {
         (let ([c (f 2)])
           (even? c))))";
     test_helper(s, "c34.s", "#t");
+}
+
+
+// invalid tests
+#[test]
+#[should_panic()]
+fn invalid1() {
+    let s = "'(#(a b c)";
+    test_helper(s, "i1.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid2() {
+    let s = "5.5";
+    test_helper(s, "i2.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid3() {
+    let s = "#\\a";
+    test_helper(s, "i3.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid4() {
+    let s = "\"test\"";
+    test_helper(s, "i4.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid5() {
+    let s = "quote";
+    test_helper(s, "i5.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid6() {
+    let s = "(quote)";
+    test_helper(s, "i6.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid7() {
+    let s = "(quote 1 2)";
+    test_helper(s, "i7.s", "!");
+}
+
+
+#[test]
+#[should_panic()]
+fn invalid8() {
+    let s = "foo";
+    test_helper(s, "i8.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid9() {
+    let s = "set!";
+    test_helper(s, "i9.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid10() {
+    let s = "(set! set! 3)";
+    test_helper(s, "i10.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid11() {
+    let s = "(set! 1 2)";
+    test_helper(s, "i11.s", "!");
+}
+
+
+#[test]
+#[should_panic()]
+fn invalid12() {
+    let s = "(set! foo 1)";
+    test_helper(s, "i12.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid13() {
+    let s = "(let ((foo 0)) (set! foo))";
+    test_helper(s, "i13.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid14() {
+    let s = "(let ((foo 0)) (set! foo 1 2))";
+    test_helper(s, "i14.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid15() {
+    let s = "(if 1)";
+    test_helper(s, "i15.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid16() {
+    let s = "(if 1 2 3 4)";
+    test_helper(s, "i16.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid17() {
+    let s = "(begin)";
+    test_helper(s, "i17.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid18() {
+    let s = "(let (foo 3) foo)";
+    test_helper(s, "i18.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid19() {
+    let s = "(let ([foo 3 4]) foo)";
+    test_helper(s, "i19.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid20() {
+    let s = "(let ([foo 3]))";
+    test_helper(s, "i20.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid21() {
+    let s = "(letrec (foo (lambda (x) x)) foo)";
+    test_helper(s, "i21.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid22() {
+    let s = "(letrec ([foo (lambda (x) x) (lambda (x) x)]) foo)";
+    test_helper(s, "i22.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid23() {
+    let s = "(letrec ([foo (lambda (x) x)]))";
+    test_helper(s, "i23.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid24() {
+    let s = "(lambda)";
+    test_helper(s, "i24.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid25() {
+    let s = "(lambda (x))";
+    test_helper(s, "i25.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid26() {
+    let s = "(lambda (x x) x)";
+    test_helper(s, "i26.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid27() {
+    let s = "(lambda (x 1) x)";
+    test_helper(s, "i27.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid28() {
+    let s = "(cons 1)";
+    test_helper(s, "i28.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid29() {
+    let s = "(foo 1)";
+    test_helper(s, "i29.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid30() {
+    let s = "(quote . 3)";
+    test_helper(s, "i30.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid31() {
+    let s = "(lambda (x) . y)";
+    test_helper(s, "i31.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid32() {
+    let s = "((lambda (x) x) . 3)";
+    test_helper(s, "i32.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid33() {
+    let s = "(if (true) 3 4)";
+    test_helper(s, "i33.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid34() {
+    let s = "(if (false) 3 4)";
+    test_helper(s, "i34.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid35() {
+    let s = "(let ([x 5] [x 10]) (+ x x))";
+    test_helper(s, "i35.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid36() {
+    let s = "(letrec ([x (lambda () 5)] [x (lambda () 10)]) (+ (x) (x)))";
+    test_helper(s, "i36.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid37() {
+    let s = "((lambda (x x) (+ x x)) 5 10)";
+    test_helper(s, "i37.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid38() {
+    let s = "(letrec () (let ([x (alloc 8)]) (mset! x 0 10) (mref x 0)))";
+    test_helper(s, "i38.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid39() {
+    let s = "(letrec () (void 1))";
+    test_helper(s, "i39.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid40() {
+    let s = "(letrec () (car))";
+    test_helper(s, "i40.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid41() {
+    let s = "(letrec () (cdr))";
+    test_helper(s, "i41.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid42() {
+    let s = "(letrec () (make-vector))";
+    test_helper(s, "i42.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid43() {
+    let s = "(letrec () (vector-length))";
+    test_helper(s, "i43.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid44() {
+    let s = "(letrec () (boolean?))";
+    test_helper(s, "i44.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid45() {
+    let s = "(letrec () (fixnum?))";
+    test_helper(s, "i45.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid46() {
+    let s = "(letrec () (null?))";
+    test_helper(s, "i46.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid47() {
+    let s = "(letrec () (pair?))";
+    test_helper(s, "i48.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid49() {
+    let s = "(letrec () (vector?))";
+    test_helper(s, "i49.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid50() {
+    let s = "(letrec () (let ([x (cons 1 2)]) (car x (cons 3 4))))";
+    test_helper(s, "i50.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid51() {
+    let s = "(letrec () (let ([x (cons 1 2)] [y (cons 3 4)]) (cdr x y)))";
+    test_helper(s, "i51.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid52() {
+    let s = "(letrec () (make-vector 5 6))";
+    test_helper(s, "i52.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid53() {
+    let s = "(letrec () (vector-length (make-vector 7) 1))";
+    test_helper(s, "i53.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid54() {
+    let s = "(letrec () (boolean? #t #f))";
+    test_helper(s, "i54.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid55() {
+    let s = "(letrec () (fixnum? 7 8))";
+    test_helper(s, "i55.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid56() {
+    let s = "(letrec () (null? '() '()))";
+    test_helper(s, "i56.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid57() {
+    let s = "(letrec () (pair? (cons 1 2) (cons 3 4)))";
+    test_helper(s, "i57.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid58() {
+    let s = "(letrec () (vector? (make-vector 1) (make-vector 2)))";
+    test_helper(s, "i58.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid59() {
+    let s = "(letrec () (* 1))";
+    test_helper(s, "i59.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid60() {
+    let s = "(letrec () (+ 2))";
+    test_helper(s, "i60.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid61() {
+    let s = "(letrec () (- 3))";
+    test_helper(s, "i61.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid62() {
+    let s = "(letrec () (cons 4))";
+    test_helper(s, "i62.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid63() {
+    let s = "(letrec () (vector-ref (make-vector 5)))";
+    test_helper(s, "i63.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid64() {
+    let s = "(letrec () (< 6))";
+    test_helper(s, "i64.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid65() {
+    let s = "(letrec () (<= 7))";
+    test_helper(s, "i65.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid66() {
+    let s = "(letrec () (= 8))";
+    test_helper(s, "i66.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid67() {
+    let s = "(letrec () (>= 9))";
+    test_helper(s, "i67.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid68() {
+    let s = "(letrec () (> 10))";
+    test_helper(s, "i68.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid69() {
+    let s = "(letrec () (eq? 11))";
+    test_helper(s, "i69.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid70() {
+    let s = "(letrec () (let ([x (cons (void) (void))]) (begin (set-car! x) x)))";
+    test_helper(s, "i70.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid71() {
+    let s = "(letrec () (let ([x (cons (void) (void))]) (begin (set-car! x) x)))";
+    test_helper(s, "i71.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid72() {
+    let s = "(letrec () (* 1 2 3))";
+    test_helper(s, "i72.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid73() {
+    let s = "(letrec () (+ 2 3 4))";
+    test_helper(s, "i73.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid74() {
+    let s = "(letrec () (- 3 5 6))";
+    test_helper(s, "i74.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid75() {
+    let s = "(letrec () (cons 4 5 6))";
+    test_helper(s, "i75.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid76() {
+    let s = "(letrec () (vector-ref (make-vector 5) 0 10))";
+    test_helper(s, "i76.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid77() {
+    let s = "(letrec () (< 6 7 8))";
+    test_helper(s, "i77.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid78() {
+    let s = "(letrec () (<= 7 8 9))";
+    test_helper(s, "i78.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid79() {
+    let s = "(letrec () (= 8 9 10))";
+    test_helper(s, "i79.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid80() {
+    let s = "(letrec () (>= 9 10 11))";
+    test_helper(s, "i80.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid81() {
+    let s = "(letrec () (> 10 11 12))";
+    test_helper(s, "i81.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid82() {
+    let s = "(letrec () (eq? 11 12 13))";
+    test_helper(s, "i82.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid83() {
+    let s = "(letrec () (let ([x (cons (void) (void))]) (begin (set-car! x 0 1) x)))";
+    test_helper(s, "i83.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid84() {
+    let s = "(letrec () (let ([x (cons (void) (void))]) (begin (set-car! x 2 3) x)))";
+    test_helper(s, "i84.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid85() {
+    let s = "(letrec () (let ([x (make-vector 2)]) (begin (vector-set! x 0) x)))";
+    test_helper(s, "i85.s", "!");
+}
+
+#[test]
+#[should_panic()]
+fn invalid86() {
+    let s = "(letrec () (let ([x (make-vector 2)]) (begin (vector-set! x 0 3 1) x)))";
+    test_helper(s, "i86.s", "!");
+}
+
+#[test]
+#[should_panic("variable y unbound")]
+fn invalid87() {
+    let s = "(let ([x 5]) (+ x y))";
+    test_helper(s, "i87.s", "!");
+}
+
+#[test]
+#[should_panic("variable f unbound")]
+fn invalid88() {
+    let s = "(let ([f (lambda (x) (if (= x 0) 1 (* x (f (- x 1)))))]) (f 10))";
+    test_helper(s, "i88.s", "!");
 }
