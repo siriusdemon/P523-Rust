@@ -1,6 +1,6 @@
 # Adventure
 
-In order to make your adventure more fun. I remove some code and leave some test fails. You are expected to fix them. Don't worry, they are very trivial.
+In order to make your adventure more fun. I remove some code and leave some test fail. You are expected to fix them. Don't worry, they are very trivial.
 
 ### Intro
 
